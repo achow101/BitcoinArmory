@@ -58,12 +58,14 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
       self.rdoFragged = QRadioButton(self.tr('Fragmented Backup (incl. mix of paper and files)'))
       self.rdoDigital = QRadioButton(self.tr('Import digital backup or watching-only wallet'))
       self.rdoWOData = QRadioButton(self.tr('Import watching-only wallet data'))
+      self.rdoSeed = QRadioButton(self.tr('Import mnemonic seed, Master private key, or Master public key'))
       self.chkTest = QCheckBox(self.tr('This is a test recovery to make sure my backup works'))
       btngrp = QButtonGroup(self)
       btngrp.addButton(self.rdoSingle)
       btngrp.addButton(self.rdoFragged)
       btngrp.addButton(self.rdoDigital)
       btngrp.addButton(self.rdoWOData)
+      btngrp.addButton(self.rdoSeed)
       btngrp.setExclusive(True)
 
       self.rdoSingle.setChecked(True)
@@ -71,6 +73,8 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
       self.connect(self.rdoFragged, SIGNAL(CLICKED), self.clickedRadio)
       self.connect(self.rdoDigital, SIGNAL(CLICKED), self.clickedRadio)
       self.connect(self.rdoWOData, SIGNAL(CLICKED), self.clickedRadio)
+      self.connect(self.rdoSeed, SIGNAL(CLICKED), self.clickedRadio)
+
 
       self.btnOkay = QPushButton(self.tr('Continue'))
       self.btnCancel = QPushButton(self.tr('Cancel'))
@@ -89,6 +93,7 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
       layout.addWidget(self.rdoFragged)
       layout.addWidget(self.rdoDigital)
       layout.addWidget(self.rdoWOData)
+      layout.addWidget(self.rdoSeed)
       layout.addWidget(HLINE())
       layout.addWidget(self.chkTest)
       layout.addWidget(buttonBox)
@@ -132,6 +137,308 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
             LOGINFO('Watching-Only Wallet Restore Complete! Will ask for a' \
                     'rescan.')
             self.main.addWalletToApplication(dlg.newWallet)
+      elif self.rdoSeed.isChecked():
+         # Restore from a BIP 39 seed, Electrum seed, master private key, or master public key
+         self.accept()
+         dlg = DlgRestoreSeed(self.parent, self.main, doTest)
+         if dlg.exec_():
+            self.main.addWalletToApplication(dlg.newWallet)
+            LOGINFO('Wallet Restore Complete!')
+            
+################################################################################
+class DlgRestoreSeed(ArmoryDialog):
+   #############################################################################
+   def __init__(self, parent, main, thisIsATest=False, expectWltID=None):
+      super(DlgRestoreSeed, self).__init__(parent, main)
+
+      self.thisIsATest = thisIsATest
+      self.testWltID = expectWltID
+      headerStr = ''
+      if thisIsATest:
+         lblDescr = QRichLabel(self.tr(
+         '<b><u><font color="blue" size="4">Test a Seed or Master key</font></u></b> '
+         '<br><br>'
+         'Use this window to test a seed or master key backup. '))
+      else:
+         lblDescr = QRichLabel(self.tr(
+         '<b><u>Restore a Wallet from seed or master key</u></b> '
+         '<br><br>'
+         'Use this window to restore a seed or master key backup.'))
+
+
+      lblType = QRichLabel(self.tr('<b>Backup Type:</b>'), doWrap=False)
+
+      self.bip39SeedRadio = QRadioButton(self.tr('BIP 39 Seed'), self)
+      self.electrumSeedRadio = QRadioButton(self.tr('Electrum seed'), self)
+      self.masterPrivkeyRadio = QRadioButton(self.tr('Master Private Key'), self)
+      self.masterPubkeyRadio = QRadioButton(self.tr('Master Public Key'), self)
+      self.backupTypeButtonGroup = QButtonGroup(self)
+      self.backupTypeButtonGroup.addButton(self.bip39SeedRadio)
+      self.backupTypeButtonGroup.addButton(self.electrumSeedRadio)
+      self.backupTypeButtonGroup.addButton(self.masterPrivkeyRadio)
+      self.backupTypeButtonGroup.addButton(self.masterPubkeyRadio)
+      self.bip39SeedRadio.setChecked(True)
+      self.connect(self.backupTypeButtonGroup, SIGNAL('buttonClicked(int)'), self.changeType)
+
+      layoutRadio = QVBoxLayout()
+      layoutRadio.addWidget(self.bip39SeedRadio)
+      layoutRadio.addWidget(self.electrumSeedRadio)
+      layoutRadio.addWidget(self.masterPrivkeyRadio)
+      layoutRadio.addWidget(self.masterPubkeyRadio)
+      layoutRadio.setSpacing(0)
+
+      radioButtonFrame = QFrame()
+      radioButtonFrame.setLayout(layoutRadio)
+
+      frmBackupType = makeVertFrame([lblType, radioButtonFrame])
+
+      self.prfxList = [QLabel(self.tr('Seed:')), QLabel(self.tr('Derivation Path:'))]
+
+      inpMask = '<AAAA\ AAAA\ AAAA\ AAAA\ \ AAAA\ AAAA\ AAAA\ AAAA\ \ AAAA!'
+      self.edtList = [MaskedInputLineEdit(inpMask) for i in range(2)]
+
+      frmAllInputs = QFrame()
+      frmAllInputs.setFrameStyle(STYLE_RAISED)
+      layoutAllInp = QGridLayout()
+      for i in range(2):
+         layoutAllInp.addWidget(self.prfxList[i], i, 0)
+         layoutAllInp.addWidget(self.edtList[i], i, 1)
+      frmAllInputs.setLayout(layoutAllInp)
+
+      doItText = self.tr('Test Backup') if thisIsATest else self.tr('Restore Wallet')
+
+      self.btnAccept = QPushButton(doItText)
+      self.btnCancel = QPushButton(self.tr("Cancel"))
+      self.connect(self.btnAccept, SIGNAL(CLICKED), self.verifyUserInput)
+      self.connect(self.btnCancel, SIGNAL(CLICKED), self.reject)
+      buttonBox = QDialogButtonBox()
+      buttonBox.addButton(self.btnAccept, QDialogButtonBox.AcceptRole)
+      buttonBox.addButton(self.btnCancel, QDialogButtonBox.RejectRole)
+
+      self.chkEncrypt = QCheckBox(self.tr('Encrypt Wallet'))
+      self.chkEncrypt.setChecked(True)
+      bottomFrm = makeHorizFrame([self.chkEncrypt, buttonBox])
+
+      walletRestoreTabs = QTabWidget()
+      backupTypeFrame = makeVertFrame([frmBackupType, frmAllInputs])
+      walletRestoreTabs.addTab(backupTypeFrame, self.tr("Backup"))
+      self.advancedOptionsTab = AdvancedOptionsFrame(parent, main)
+      walletRestoreTabs.addTab(self.advancedOptionsTab, self.tr("Advanced Options"))
+
+      layout = QVBoxLayout()
+      layout.addWidget(lblDescr)
+      layout.addWidget(HLINE())
+      layout.addWidget(walletRestoreTabs)
+      layout.addWidget(bottomFrm)
+      self.setLayout(layout)
+
+
+      self.chkEncrypt.setChecked(not thisIsATest)
+      self.chkEncrypt.setVisible(not thisIsATest)
+      self.advancedOptionsTab.setEnabled(not thisIsATest)
+      if thisIsATest:
+         self.setWindowTitle(self.tr('Test Seed Backup'))
+      else:
+         self.setWindowTitle(self.tr('Restore Seed Backup'))
+         self.connect(self.chkEncrypt, SIGNAL(CLICKED), self.onEncryptCheckboxChange)
+
+      self.setMinimumWidth(500)
+      self.layout().setSizeConstraint(QLayout.SetFixedSize)
+      self.changeType(self.backupTypeButtonGroup.checkedId())
+
+   #############################################################################
+   # Hide advanced options whenver the restored wallet is unencrypted
+   def onEncryptCheckboxChange(self):
+      self.advancedOptionsTab.setEnabled(self.chkEncrypt.isChecked())
+
+   #############################################################################
+   def changeType(self, sel):
+      if   sel == self.backupTypeButtonGroup.id(self.bip39SeedRadio):
+         visList = [0, 1, 1, 1, 1]
+      elif sel == self.backupTypeButtonGroup.id(self.electrumSeedRadio):
+         visList = [0, 1, 1, 1, 1]
+      elif sel == self.backupTypeButtonGroup.id(self.masterPrivkeyRadio):
+         visList = [1, 1, 1, 1, 1]
+      elif sel == self.backupTypeButtonGroup.id(self.masterPubkeyRadio):
+         visList = [0, 1, 1, 0, 0]
+      else:
+         LOGERROR('What the heck backup type is selected?  %d', sel)
+         return
+
+   #############################################################################
+   def verifyUserInput(self):
+      inputLines = []
+      nError = 0
+      rawBin = None
+      nLine = 4 if self.isLongForm else 2
+      for i in range(nLine):
+         hasError = False
+         try:
+            rawEntry = str(self.edtList[i].text())
+            rawBin, err = readSixteenEasyBytes(rawEntry.replace(' ', ''))
+            if err == 'Error_2+':
+               hasError = True
+            elif err == 'Fixed_1':
+               nError += 1
+         except:
+            hasError = True
+
+         if hasError:
+            lineNumber = i+1
+            reply = QMessageBox.critical(self, self.tr('Invalid Data'), self.tr(
+               'There is an error in the data you entered that could not be '
+               'fixed automatically.  Please double-check that you entered the '
+               'text exactly as it appears on the wallet-backup page.  <br><br> '
+               'The error occured on <font color="red">line #%1</font>.').arg(lineNumber), \
+               QMessageBox.Ok)
+            LOGERROR('Error in wallet restore field')
+            self.prfxList[i].setText('<font color="red">' + str(self.prfxList[i].text()) + '</font>')
+            return
+
+         inputLines.append(rawBin)
+
+      if self.chkEncrypt.isChecked() and self.advancedOptionsTab.getKdfSec() == -1:
+            QMessageBox.critical(self, self.tr('Invalid Target Compute Time'), \
+               self.tr('You entered Target Compute Time incorrectly.\n\nEnter: <Number> (ms, s)'), QMessageBox.Ok)
+            return
+      if self.chkEncrypt.isChecked() and self.advancedOptionsTab.getKdfBytes() == -1:
+            QMessageBox.critical(self, self.tr('Invalid Max Memory Usage'), \
+               self.tr('You entered Max Memory Usage incorrectly.\n\nEnter: <Number> (kB, MB)'), QMessageBox.Ok)
+            return
+      if nError > 0:
+         pluralStr = 'error' if nError == 1 else 'errors'
+
+         msg = self.tr(
+            'Detected errors in the data you entered. '
+            'Armory attempted to fix the errors but it is not '
+            'always right.  Be sure to verify the "Wallet Unique ID" '
+            'closely on the next window.')
+
+         QMessageBox.question(self, self.tr('Errors Corrected'), msg, \
+            QMessageBox.Ok)
+
+      privKey = SecureBinaryData(''.join(inputLines[:2]))
+      if self.isLongForm:
+         chain = SecureBinaryData(''.join(inputLines[2:]))
+
+
+
+      if self.doMask:
+         # Prepare the key mask parameters
+         SECPRINT = HardcodedKeyMaskParams()
+         securePrintCode = str(self.editSecurePrint.text()).strip()
+         if not checkSecurePrintCode(self, SECPRINT, securePrintCode):
+            return
+
+
+         maskKey = SECPRINT['FUNC_KDF'](securePrintCode)
+         privKey = SECPRINT['FUNC_UNMASK'](privKey, ekey=maskKey)
+         if self.isLongForm:
+            chain = SECPRINT['FUNC_UNMASK'](chain, ekey=maskKey)
+
+      if not self.isLongForm:
+         chain = DeriveChaincodeFromRootKey(privKey)
+
+      # If we got here, the data is valid, let's create the wallet and accept the dlg
+      # Now we should have a fully-plaintext rootkey and chaincode
+      root = PyBtcAddress().createFromPlainKeyData(privKey)
+      root.chaincode = chain
+
+      first = root.extendAddressChain()
+      newWltID = binary_to_base58((ADDRBYTE + first.getAddr160()[:5])[::-1])
+
+      # Stop here if this was just a test
+      if self.thisIsATest:
+         verifyRecoveryTestID(self, newWltID, self.testWltID)
+         return
+
+      dlgOwnWlt = None
+      if self.main.walletMap.has_key(newWltID):
+         dlgOwnWlt = DlgReplaceWallet(newWltID, self.parent, self.main)
+
+         if (dlgOwnWlt.exec_()):
+            if dlgOwnWlt.output == 0:
+               return
+         else:
+            self.reject()
+            return
+      else:
+         reply = QMessageBox.question(self, self.tr('Verify Wallet ID'), \
+                  self.tr('The data you entered corresponds to a wallet with a wallet ID: \n\n'
+                  '%1\n\nDoes this ID match the "Wallet Unique ID" '
+                  'printed on your paper backup?  If not, click "No" and reenter '
+                  'key and chain-code data again.').arg(newWltID), \
+                  QMessageBox.Yes | QMessageBox.No)
+         if reply == QMessageBox.No:
+            return
+
+      passwd = []
+      if self.chkEncrypt.isChecked():
+         dlgPasswd = DlgChangePassphrase(self, self.main)
+         if dlgPasswd.exec_():
+            passwd = SecureBinaryData(str(dlgPasswd.edtPasswd1.text()))
+         else:
+            QMessageBox.critical(self, self.tr('Cannot Encrypt'), \
+               self.tr('You requested your restored wallet be encrypted, but no '
+               'valid passphrase was supplied.  Aborting wallet recovery.'), \
+               QMessageBox.Ok)
+            return
+
+      shortl = ''
+      longl  = ''
+      nPool  = 1000
+
+      if dlgOwnWlt is not None:
+         if dlgOwnWlt.Meta is not None:
+            shortl = ' - %s' % (dlgOwnWlt.Meta['shortLabel'])
+            longl  = dlgOwnWlt.Meta['longLabel']
+            nPool = max(nPool, dlgOwnWlt.Meta['naddress'])
+
+      self.newWallet = PyBtcWallet()
+
+      if passwd:
+         self.newWallet.createNewWallet( \
+                                 plainRootKey=privKey, \
+                                 chaincode=chain, \
+                                 shortLabel='Restored - ' + newWltID +shortl, \
+                                 longLabel=longl, \
+                                 withEncrypt=True, \
+                                 securePassphrase=passwd, \
+                                 kdfTargSec = \
+                                 self.advancedOptionsTab.getKdfSec(), \
+                                 kdfMaxMem = \
+                                 self.advancedOptionsTab.getKdfBytes(),
+                                 isActuallyNew=False, \
+                                 doRegisterWithBDM=False)
+      else:
+         self.newWallet.createNewWallet( \
+                                 plainRootKey=privKey, \
+                                 chaincode=chain, \
+                                 shortLabel='Restored - ' + newWltID +shortl, \
+                                 longLabel=longl, \
+                                 withEncrypt=False, \
+                                 isActuallyNew=False, \
+                                 doRegisterWithBDM=False)
+
+      fillAddrPoolProgress = DlgProgress(self, self.main, HBar=1,
+                                         Title=self.tr("Computing New Addresses"))
+      fillAddrPoolProgress.exec_(self.newWallet.fillAddressPool, nPool)
+
+      if dlgOwnWlt is not None:
+         if dlgOwnWlt.Meta is not None:
+            from armoryengine.PyBtcWallet import WLT_UPDATE_ADD
+            for n_cmt in range(0, dlgOwnWlt.Meta['ncomments']):
+               entrylist = []
+               entrylist = list(dlgOwnWlt.Meta[n_cmt])
+               self.newWallet.walletFileSafeUpdate([[WLT_UPDATE_ADD,
+                                                     entrylist[2],
+                                                     entrylist[1],
+                                                     entrylist[0]]])
+
+         self.newWallet = PyBtcWallet().readWalletFile(self.newWallet.walletPath)
+      self.accept()
+
+
 
 ################################################################################
 class DlgRestoreSingle(ArmoryDialog):
