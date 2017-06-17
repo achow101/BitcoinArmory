@@ -267,35 +267,25 @@ class DlgRestoreSeed(ArmoryDialog):
 
    #############################################################################
    def verifyUserInput(self):
-      inputLines = []
       nError = 0
-      rawBin = None
-      nLine = 4 if self.isLongForm else 2
-      for i in range(nLine):
-         hasError = False
-         try:
-            rawEntry = str(self.edtList[i].text())
-            rawBin, err = readSixteenEasyBytes(rawEntry.replace(' ', ''))
-            if err == 'Error_2+':
-               hasError = True
-            elif err == 'Fixed_1':
-               nError += 1
-         except:
-            hasError = True
-
-         if hasError:
-            lineNumber = i+1
-            reply = QMessageBox.critical(self, self.tr('Invalid Data'), self.tr(
-               'There is an error in the data you entered that could not be '
-               'fixed automatically.  Please double-check that you entered the '
-               'text exactly as it appears on the wallet-backup page.  <br><br> '
-               'The error occured on <font color="red">line #%1</font>.').arg(lineNumber), \
-               QMessageBox.Ok)
-            LOGERROR('Error in wallet restore field')
-            self.prfxList[i].setText('<font color="red">' + str(self.prfxList[i].text()) + '</font>')
-            return
-
-         inputLines.append(rawBin)
+      seedOrKeySTr = self.edtList[0].text()
+      derivationPath = self.edtList[1].text()
+      inputData = []
+      isSeed = " " in data
+      if isSeed:
+         # Check BIP 39 seed
+         if self.bip39SeedRadio.isChecked():
+            # TODO: Check this
+            pass
+         elif self.electrumSeedRadio.isChecked():
+            # TODO: Check this
+            pass
+         elif self.masterPrivkeyRadio.isChecked():
+            # TODO: Check this
+            pass
+         elif self.masterPubkeyRadio.isChecked():
+            # TODO: Check this
+            pass
 
       if self.chkEncrypt.isChecked() and self.advancedOptionsTab.getKdfSec() == -1:
             QMessageBox.critical(self, self.tr('Invalid Target Compute Time'), \
@@ -317,60 +307,9 @@ class DlgRestoreSeed(ArmoryDialog):
          QMessageBox.question(self, self.tr('Errors Corrected'), msg, \
             QMessageBox.Ok)
 
-      privKey = SecureBinaryData(''.join(inputLines[:2]))
-      if self.isLongForm:
-         chain = SecureBinaryData(''.join(inputLines[2:]))
-
-
-
-      if self.doMask:
-         # Prepare the key mask parameters
-         SECPRINT = HardcodedKeyMaskParams()
-         securePrintCode = str(self.editSecurePrint.text()).strip()
-         if not checkSecurePrintCode(self, SECPRINT, securePrintCode):
-            return
-
-
-         maskKey = SECPRINT['FUNC_KDF'](securePrintCode)
-         privKey = SECPRINT['FUNC_UNMASK'](privKey, ekey=maskKey)
-         if self.isLongForm:
-            chain = SECPRINT['FUNC_UNMASK'](chain, ekey=maskKey)
-
-      if not self.isLongForm:
-         chain = DeriveChaincodeFromRootKey(privKey)
-
-      # If we got here, the data is valid, let's create the wallet and accept the dlg
-      # Now we should have a fully-plaintext rootkey and chaincode
-      root = PyBtcAddress().createFromPlainKeyData(privKey)
-      root.chaincode = chain
-
-      first = root.extendAddressChain()
-      newWltID = binary_to_base58((ADDRBYTE + first.getAddr160()[:5])[::-1])
-
       # Stop here if this was just a test
       if self.thisIsATest:
-         verifyRecoveryTestID(self, newWltID, self.testWltID)
          return
-
-      dlgOwnWlt = None
-      if self.main.walletMap.has_key(newWltID):
-         dlgOwnWlt = DlgReplaceWallet(newWltID, self.parent, self.main)
-
-         if (dlgOwnWlt.exec_()):
-            if dlgOwnWlt.output == 0:
-               return
-         else:
-            self.reject()
-            return
-      else:
-         reply = QMessageBox.question(self, self.tr('Verify Wallet ID'), \
-                  self.tr('The data you entered corresponds to a wallet with a wallet ID: \n\n'
-                  '%1\n\nDoes this ID match the "Wallet Unique ID" '
-                  'printed on your paper backup?  If not, click "No" and reenter '
-                  'key and chain-code data again.').arg(newWltID), \
-                  QMessageBox.Yes | QMessageBox.No)
-         if reply == QMessageBox.No:
-            return
 
       passwd = []
       if self.chkEncrypt.isChecked():
@@ -387,55 +326,9 @@ class DlgRestoreSeed(ArmoryDialog):
       shortl = ''
       longl  = ''
       nPool  = 1000
+      
+      # TODO: Make the wallet and add the stuff to it. Requires BIP 32 wallets for this
 
-      if dlgOwnWlt is not None:
-         if dlgOwnWlt.Meta is not None:
-            shortl = ' - %s' % (dlgOwnWlt.Meta['shortLabel'])
-            longl  = dlgOwnWlt.Meta['longLabel']
-            nPool = max(nPool, dlgOwnWlt.Meta['naddress'])
-
-      self.newWallet = PyBtcWallet()
-
-      if passwd:
-         self.newWallet.createNewWallet( \
-                                 plainRootKey=privKey, \
-                                 chaincode=chain, \
-                                 shortLabel='Restored - ' + newWltID +shortl, \
-                                 longLabel=longl, \
-                                 withEncrypt=True, \
-                                 securePassphrase=passwd, \
-                                 kdfTargSec = \
-                                 self.advancedOptionsTab.getKdfSec(), \
-                                 kdfMaxMem = \
-                                 self.advancedOptionsTab.getKdfBytes(),
-                                 isActuallyNew=False, \
-                                 doRegisterWithBDM=False)
-      else:
-         self.newWallet.createNewWallet( \
-                                 plainRootKey=privKey, \
-                                 chaincode=chain, \
-                                 shortLabel='Restored - ' + newWltID +shortl, \
-                                 longLabel=longl, \
-                                 withEncrypt=False, \
-                                 isActuallyNew=False, \
-                                 doRegisterWithBDM=False)
-
-      fillAddrPoolProgress = DlgProgress(self, self.main, HBar=1,
-                                         Title=self.tr("Computing New Addresses"))
-      fillAddrPoolProgress.exec_(self.newWallet.fillAddressPool, nPool)
-
-      if dlgOwnWlt is not None:
-         if dlgOwnWlt.Meta is not None:
-            from armoryengine.PyBtcWallet import WLT_UPDATE_ADD
-            for n_cmt in range(0, dlgOwnWlt.Meta['ncomments']):
-               entrylist = []
-               entrylist = list(dlgOwnWlt.Meta[n_cmt])
-               self.newWallet.walletFileSafeUpdate([[WLT_UPDATE_ADD,
-                                                     entrylist[2],
-                                                     entrylist[1],
-                                                     entrylist[0]]])
-
-         self.newWallet = PyBtcWallet().readWalletFile(self.newWallet.walletPath)
       self.accept()
 
 
