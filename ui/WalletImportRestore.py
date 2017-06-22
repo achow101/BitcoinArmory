@@ -190,19 +190,32 @@ class DlgRestoreSeed(ArmoryDialog):
       radioButtonFrame = QFrame()
       radioButtonFrame.setLayout(layoutRadio)
 
-      frmBackupType = makeVertFrame([lblType, radioButtonFrame])
+      self.derivLineEdit = QLineEdit()
+      self.derivationpaths = ['m/44\'/0\'/k\'/i', 'm/0\'\k\'/i\'', 'm/0\'/k/i', '',]
+      self.derivLineEdit.setText(self.derivationpaths[0])
+      self.derivLineEdit.setReadOnly(True)
 
-      self.prfxList = [QLabel(self.tr('Seed:')), QLabel(self.tr('Derivation Path:'))]
+      self.cmbPresetDerivs = QComboBox()
+      self.cmbPresetDerivs.addItem(self.tr('Default (BIP 44)'))
+      self.cmbPresetDerivs.addItem(self.tr('Bitcoin Core'))
+      self.cmbPresetDerivs.addItem(self.tr('MultiBit HD'))
+      self.cmbPresetDerivs.addItem(self.tr('Custom'))
+      self.connect(self.cmbPresetDerivs, SIGNAL('currentIndexChanged(int)'), self.onDerivComboBoxChange)
 
-      inpMask = '<AAAA\ AAAA\ AAAA\ AAAA\ \ AAAA\ AAAA\ AAAA\ AAAA\ \ AAAA!'
-      self.edtList = [MaskedInputLineEdit(inpMask) for i in range(2)]
+      layoutDerivPaths = QHBoxLayout()
+      layoutDerivPaths.addWidget(self.cmbPresetDerivs)
+      layoutDerivPaths.addWidget(self.derivLineEdit)
+
+      cmbFrame = QFrame()
+      cmbFrame.setLayout(layoutDerivPaths)
+
+      frmBackupType = makeVertFrame([lblType, radioButtonFrame, cmbFrame])
 
       frmAllInputs = QFrame()
       frmAllInputs.setFrameStyle(STYLE_RAISED)
       layoutAllInp = QGridLayout()
-      for i in range(2):
-         layoutAllInp.addWidget(self.prfxList[i], i, 0)
-         layoutAllInp.addWidget(self.edtList[i], i, 1)
+      layoutAllInp.addWidget(QLabel(self.tr('Seed:')), 0, 0)
+      layoutAllInp.addWidget(QLineEdit(), 0, 1)
       frmAllInputs.setLayout(layoutAllInp)
 
       doItText = self.tr('Test Backup') if thisIsATest else self.tr('Restore Wallet')
@@ -245,6 +258,15 @@ class DlgRestoreSeed(ArmoryDialog):
       self.setMinimumWidth(500)
       self.layout().setSizeConstraint(QLayout.SetFixedSize)
       self.changeType(self.backupTypeButtonGroup.checkedId())
+
+   #############################################################################
+   # Change derivation path when changed
+   def onDerivComboBoxChange(self, index):
+      self.derivLineEdit.setText(self.derivationpaths[index])
+      if index != 3:
+         self.derivLineEdit.setReadOnly(True)
+      else:
+         self.derivLineEdit.setReadOnly(False)
 
    #############################################################################
    # Hide advanced options whenver the restored wallet is unencrypted
