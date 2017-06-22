@@ -191,7 +191,7 @@ class DlgRestoreSeed(ArmoryDialog):
       radioButtonFrame.setLayout(layoutRadio)
 
       self.derivLineEdit = QLineEdit()
-      self.derivationpaths = ['m/44\'/0\'/k\'/i', 'm/0\'\k\'/i\'', 'm/0\'/k/i', '',]
+      self.derivationpaths = ['m/44\'/0\'/k\'/i', 'm/0\'/k\'/i\'', 'm/0\'/k/i', '',]
       self.derivLineEdit.setText(self.derivationpaths[0])
       self.derivLineEdit.setReadOnly(True)
 
@@ -210,12 +210,14 @@ class DlgRestoreSeed(ArmoryDialog):
       cmbFrame.setLayout(layoutDerivPaths)
 
       frmBackupType = makeVertFrame([lblType, radioButtonFrame, cmbFrame])
+      
+      self.seedEntry = QLineEdit()
 
       frmAllInputs = QFrame()
       frmAllInputs.setFrameStyle(STYLE_RAISED)
       layoutAllInp = QGridLayout()
       layoutAllInp.addWidget(QLabel(self.tr('Seed:')), 0, 0)
-      layoutAllInp.addWidget(QLineEdit(), 0, 1)
+      layoutAllInp.addWidget(self.seedEntry, 0, 1)
       frmAllInputs.setLayout(layoutAllInp)
 
       doItText = self.tr('Test Backup') if thisIsATest else self.tr('Restore Wallet')
@@ -290,24 +292,59 @@ class DlgRestoreSeed(ArmoryDialog):
    #############################################################################
    def verifyUserInput(self):
       nError = 0
-      seedOrKeySTr = self.edtList[0].text()
-      derivationPath = self.edtList[1].text()
-      inputData = []
-      isSeed = " " in data
-      if isSeed:
-         # Check BIP 39 seed
-         if self.bip39SeedRadio.isChecked():
-            # TODO: Check this
-            pass
-         elif self.electrumSeedRadio.isChecked():
-            # TODO: Check this
-            pass
-         elif self.masterPrivkeyRadio.isChecked():
-            # TODO: Check this
-            pass
-         elif self.masterPubkeyRadio.isChecked():
-            # TODO: Check this
-            pass
+      seedOrKeyStr = str(self.seedEntry.text())
+      derivationPath = str(self.derivLineEdit.text())
+      derivPathAlphabet = "mik0123456789\'/"
+
+      # Check the derivation path is legit
+      derivPathParts = derivationPath.split("/")
+      for i in range(len(derivPathParts)):
+         # Check for an apostrophe as the last character
+         if '\'' in derivPathParts[i][-1]: # Assume the apostrophe is at the end. If it isn't, well catch it later
+            derivPartStr = derivPathParts[i][:-1]
+         else:
+            derivPartStr = derivPathParts[i]
+
+         # last piece must be i
+         if i is len(derivPathParts) - 1:
+            if derivPartStr is not "i":
+               QMessageBox.critical(self, self.tr('Invalid Derivation Path'), \
+                  self.tr('Last piece of derivation path must be \'i\''), QMessageBox.Ok)
+               return
+            continue
+
+         # First piece must be m
+         if i == 0:
+            if derivPartStr is not "m":
+               QMessageBox.critical(self, self.tr('Invalid Derivation Path'), \
+                  self.tr('First piece of derivation path must be \'m\''), QMessageBox.Ok)
+               return
+            continue
+
+         # Not last pieces
+         if derivPartStr.isdigit():
+            continue # Do nothing, this is good
+         elif derivPartStr is "k": # Only non number allowed here is k
+            continue # Do nothing, this is good
+         else:
+           QMessageBox.critical(self, self.tr('Invalid Derivation Path'), \
+              self.tr('Invalid characters in derivation path.\n\nThe derivation path can only contain numbers, the letters \'m\',\'k\',\'i\', '
+                        'and the characters \' (apostrophe), and / (slash).'), QMessageBox.Ok)
+           return            
+
+      # Check BIP 39 seed
+      if self.bip39SeedRadio.isChecked():
+         # TODO: Check this
+         pass
+      elif self.electrumSeedRadio.isChecked():
+         # TODO: Check this
+         pass
+      elif self.masterPrivkeyRadio.isChecked():
+         # TODO: Check this
+         pass
+      elif self.masterPubkeyRadio.isChecked():
+         # TODO: Check this
+         pass
 
       if self.chkEncrypt.isChecked() and self.advancedOptionsTab.getKdfSec() == -1:
             QMessageBox.critical(self, self.tr('Invalid Target Compute Time'), \
@@ -317,17 +354,6 @@ class DlgRestoreSeed(ArmoryDialog):
             QMessageBox.critical(self, self.tr('Invalid Max Memory Usage'), \
                self.tr('You entered Max Memory Usage incorrectly.\n\nEnter: <Number> (kB, MB)'), QMessageBox.Ok)
             return
-      if nError > 0:
-         pluralStr = 'error' if nError == 1 else 'errors'
-
-         msg = self.tr(
-            'Detected errors in the data you entered. '
-            'Armory attempted to fix the errors but it is not '
-            'always right.  Be sure to verify the "Wallet Unique ID" '
-            'closely on the next window.')
-
-         QMessageBox.question(self, self.tr('Errors Corrected'), msg, \
-            QMessageBox.Ok)
 
       # Stop here if this was just a test
       if self.thisIsATest:
@@ -2218,5 +2244,5 @@ class DlgWltRecoverWallet(ArmoryDialog):
       self.edtWalletPath.setText(pathSelect)
 
 # Need to put circular imports at the end of the script to avoid an import deadlock
-from qtdialogs import CLICKED, STRETCH
+from qtdialogs import CLICKED, STRETCH, DlgChangePassphrase
 
