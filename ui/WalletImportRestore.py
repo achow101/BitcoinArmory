@@ -59,6 +59,7 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
       self.rdoDigital = QRadioButton(self.tr('Import digital backup or watching-only wallet'))
       self.rdoWOData = QRadioButton(self.tr('Import watching-only wallet data'))
       self.rdoSeed = QRadioButton(self.tr('Import mnemonic seed, Master private key, or Master public key'))
+      self.rdoHW = QRadioButton(self.tr('Import or Setup a Hardware Wallet'))
       self.chkTest = QCheckBox(self.tr('This is a test recovery to make sure my backup works'))
       btngrp = QButtonGroup(self)
       btngrp.addButton(self.rdoSingle)
@@ -66,6 +67,7 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
       btngrp.addButton(self.rdoDigital)
       btngrp.addButton(self.rdoWOData)
       btngrp.addButton(self.rdoSeed)
+      btngrp.addButton(self.rdoHW)
       btngrp.setExclusive(True)
 
       self.rdoSingle.setChecked(True)
@@ -74,7 +76,7 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
       self.connect(self.rdoDigital, SIGNAL(CLICKED), self.clickedRadio)
       self.connect(self.rdoWOData, SIGNAL(CLICKED), self.clickedRadio)
       self.connect(self.rdoSeed, SIGNAL(CLICKED), self.clickedRadio)
-
+      self.connect(self.rdoHW, SIGNAL(CLICKED), self.clickedRadio)
 
       self.btnOkay = QPushButton(self.tr('Continue'))
       self.btnCancel = QPushButton(self.tr('Cancel'))
@@ -94,6 +96,7 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
       layout.addWidget(self.rdoDigital)
       layout.addWidget(self.rdoWOData)
       layout.addWidget(self.rdoSeed)
+      layout.addWidget(self.rdoHW)
       layout.addWidget(HLINE())
       layout.addWidget(self.chkTest)
       layout.addWidget(buttonBox)
@@ -101,7 +104,7 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
       self.setMinimumWidth(450)
 
    def clickedRadio(self):
-      if self.rdoDigital.isChecked():
+      if self.rdoDigital.isChecked() or self.rdoHW.isChecked():
          self.chkTest.setChecked(False)
          self.chkTest.setEnabled(False)
       else:
@@ -144,6 +147,92 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
          if dlg.exec_():
             self.main.addWalletToApplication(dlg.newWallet)
             LOGINFO('Wallet Restore Complete!')
+      elif self.rdoHW.isChecked():
+         # Setup or use a hardware wallet
+         self.accept()
+         dlg = DlgImportHW(self.parent, self.main)
+         if dlg.exec_():
+            self.main.addWalletToApplication(dlg.newWallet)
+            LOGINFO('Hardware Wallet setup!')
+
+################################################################################
+class DlgImportHW(ArmoryDialog):
+   #############################################################################
+   def __init__(self, parent, main):
+      super(DlgImportHW, self).__init__(parent, main)
+
+      lblDescr = QRichLabel(self.tr(
+      '<b><u>Setup a Hardware Wallet</u></b> '
+      '<br><br>'
+      'Use this window to setup a hardware wallet '
+      'to be used by Armory. The device can be uninitialized '
+      'in which case it will be initialized here.'))
+
+
+      lblType = QRichLabel(self.tr('<b>Hardware Type:</b>'), doWrap=False)
+
+      self.trezorButton = QRadioButton(self.tr('Trezor'), self)
+      self.ledgerButton = QRadioButton(self.tr('Ledger Nano S'), self)
+      self.keepkeyButton = QRadioButton(self.tr('KeepKey'), self)
+      self.digitalBitboxButton = QRadioButton(self.tr('Digital Bitbox'), self)
+      self.backupTypeButtonGroup = QButtonGroup(self)
+      self.backupTypeButtonGroup.addButton(self.trezorButton)
+      self.backupTypeButtonGroup.addButton(self.ledgerButton)
+      self.backupTypeButtonGroup.addButton(self.keepkeyButton)
+      self.backupTypeButtonGroup.addButton(self.digitalBitboxButton)
+      self.trezorButton.setChecked(True)
+
+      layoutRadio = QVBoxLayout()
+      layoutRadio.addWidget(self.trezorButton)
+      layoutRadio.addWidget(self.ledgerButton)
+      layoutRadio.addWidget(self.keepkeyButton)
+      layoutRadio.addWidget(self.digitalBitboxButton)
+      layoutRadio.setSpacing(0)
+
+      radioButtonFrame = QFrame()
+      radioButtonFrame.setLayout(layoutRadio)
+
+      frmBackupType = makeVertFrame([lblType, radioButtonFrame])
+
+      self.btnAccept = QPushButton(self.tr('Next'))
+      self.btnCancel = QPushButton(self.tr("Cancel"))
+      self.connect(self.btnAccept, SIGNAL(CLICKED), self.beginHWsetup)
+      self.connect(self.btnCancel, SIGNAL(CLICKED), self.reject)
+      buttonBox = QDialogButtonBox()
+      buttonBox.addButton(self.btnAccept, QDialogButtonBox.AcceptRole)
+      buttonBox.addButton(self.btnCancel, QDialogButtonBox.RejectRole)
+
+      layout = QVBoxLayout()
+      layout.addWidget(frmBackupType)
+      layout.addWidget(buttonBox)
+      self.setLayout(layout)
+
+      self.setWindowTitle(self.tr('Setup a Hardware Wallet'))
+
+      self.setMinimumWidth(500)
+      self.layout().setSizeConstraint(QLayout.SetFixedSize)
+
+   #############################################################################
+   def beginHWsetup(self):
+
+      if self.trezorButton.isChecked():
+         QMessageBox.critical(self, self.tr('Unsupported Hardware Wallet'), \
+               self.tr('The chosen hardware wallet is not yet supported.'), QMessageBox.Ok)
+         return
+      elif self.ledgerButton.isChecked():
+         QMessageBox.critical(self, self.tr('Unsupported Hardware Wallet'), \
+               self.tr('The chosen hardware wallet is not yet supported.'), QMessageBox.Ok)
+         return
+      elif self.keepkeyButton.isChecked():
+         QMessageBox.critical(self, self.tr('Unsupported Hardware Wallet'), \
+               self.tr('The chosen hardware wallet is not yet supported.'), QMessageBox.Ok)
+         return
+      elif self.digitalBitboxButton.isChecked():
+         QMessageBox.critical(self, self.tr('Unsupported Hardware Wallet'), \
+               self.tr('The chosen hardware wallet is not yet supported.'), QMessageBox.Ok)
+         return
+
+      self.accept()
             
 ################################################################################
 class DlgRestoreSeed(ArmoryDialog):
