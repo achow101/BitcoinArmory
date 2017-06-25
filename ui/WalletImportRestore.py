@@ -12,6 +12,7 @@ from PyQt4.Qt import * #@UnusedWildImport
 from PyQt4.QtGui import * #@UnusedWildImport
 
 from armoryengine.BDM import TheBDM, BDM_BLOCKCHAIN_READY
+from armoryengine.TrezorHW import DlgChooseTrezor
 from qtdefines import * #@UnusedWildImport
 from ui.WalletFrames import AdvancedOptionsFrame
 
@@ -216,9 +217,7 @@ class DlgImportHW(ArmoryDialog):
    def beginHWsetup(self):
 
       if self.trezorButton.isChecked():
-         QMessageBox.critical(self, self.tr('Unsupported Hardware Wallet'), \
-               self.tr('The chosen hardware wallet is not yet supported.'), QMessageBox.Ok)
-         return
+         dlg = DlgChooseTrezor(self.parent, self.main)
       elif self.ledgerButton.isChecked():
          QMessageBox.critical(self, self.tr('Unsupported Hardware Wallet'), \
                self.tr('The chosen hardware wallet is not yet supported.'), QMessageBox.Ok)
@@ -233,6 +232,7 @@ class DlgImportHW(ArmoryDialog):
          return
 
       self.accept()
+      dlg.exec_()
             
 ################################################################################
 class DlgRestoreSeed(ArmoryDialog):
