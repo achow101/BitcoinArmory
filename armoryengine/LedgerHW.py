@@ -1,21 +1,24 @@
+from btchip.btchip import btchip
+from btchip.btchipComm import HIDDongleHIDAPI
+from btchip.btchipPersoWizard import StartBTChipPersoDialog
+
 from PyQt4.Qt import * #@UnusedWildImport
 from PyQt4.QtGui import * #@UnusedWildImport
 from qtdefines import * #@UnusedWildImport
 
-from keepkeylib.client import KeepKeyClient
-from keepkeylib.transport_hid import HidTransport
+import hid
 
-# Choose the KeepKey to setup
+# Choose the Ledger to setup
 ################################################################################
-class DlgChooseKeepKey(ArmoryDialog):
+class DlgChooseLedger(ArmoryDialog):
    #############################################################################
    def __init__(self, parent, main):
-      super(DlgChooseKeepKey, self).__init__(parent, main)
+      super(DlgChooseLedger, self).__init__(parent, main)
 
       lblDescr = QRichLabel(self.tr(
-      '<b><u>Choose a KeepKey to Setup</u></b> '
+      '<b><u>Choose a Ledger Nano S to Setup</u></b> '
       '<br><br>'
-      'Use this window to setup choose which KeepKey hardware wallet '
+      'Use this window to setup choose which Ledger Nano S hardware wallet '
       'to setup.'))
 
 
@@ -25,24 +28,22 @@ class DlgChooseKeepKey(ArmoryDialog):
       layoutRadio = QVBoxLayout()
       layoutRadio.setSpacing(0) 
 
-      transports = HidTransport.enumerate()
       self.devices = []
       id = 0
-      for d in transports:
-         transport = HidTransport(d)
-         client = KeepKeyClient(transport)
-         self.devices.append(client)
-         if client.features.initialized:
-            rdo = QRadioButton(self.tr("%1 [Initialized, id: %2]").arg(client.features.label, 
-               client.features.device_id))
-         else:
-            rdo = QRadioButton(self.tr("unnamed [Uninitialized, id: %2").arg(client.features.label,
-               client.features.device_id))
-         self.rdoBtnGrp.addButton(rdo)
-         self.rdoBtnGrp.setId(rdo, id)
-         id += 1
-         rdo.setChecked(True)
-         layoutRadio.addWidget(rdo)
+      for hidDevice in hid.enumerate(0, 0):
+         if hidDevice['vendor_id'] == 0x2c97: # Ledger Nano S
+            dev = hid.device()
+            dev.open_path(hidDevice['path'])
+            dev.set_nonblocking(True)
+            dongle = HIDDongleHIDAPI(dev, True, False)
+            client = btchip(dongle)
+            self.devices.append(client)
+            rdo = QRadioButton(self.tr("Ledger Device "))
+            self.rdoBtnGrp.addButton(rdo)
+            self.rdoBtnGrp.setId(rdo, id)
+            id += 1
+            rdo.setChecked(True)
+            layoutRadio.addWidget(rdo)
 
       radioButtonFrame = QFrame()
       radioButtonFrame.setLayout(layoutRadio)
@@ -60,7 +61,7 @@ class DlgChooseKeepKey(ArmoryDialog):
       layout.addWidget(buttonBox)
       self.setLayout(layout)
 
-      self.setWindowTitle(self.tr('Choose a KeepKey to Setup'))
+      self.setWindowTitle(self.tr('Choose a Ledger to Setup'))
 
       self.setMinimumWidth(500)
       self.layout().setSizeConstraint(QLayout.SetFixedSize)
@@ -68,25 +69,15 @@ class DlgChooseKeepKey(ArmoryDialog):
    def nextDlg(self):
       idx = self.rdoBtnGrp.checkedId()
       device = self.devices[idx]
-      if device.features.initialized:
-         dlg = DlgCreateKeepKeyWallet(self.parent, self.main, self.devices[idx])
-      else:
-         dlg = DlgSetupKeepKey(self.parent, self.main, self.devices[idx])
+      dlg = DlgCreateLedgerWallet(self.parent, self.main, self.devices[idx])
 
       self.accept()
       dlg.exec_()
 
-# Setup the wallet for an initialized KeepKey
-class DlgCreateKeepKeyWallet(ArmoryDialog):
+# Setup the wallet for an initialized Ledger
+class DlgCreateLedgerWallet(ArmoryDialog):
    def __init__(self, parent, main, device):
-      super(DlgCreateKeepKeyWallet, self).__init__(parent, main)
-      self.device = device
-
-
-# Setup an uninitialized KeepKey
-class DlgSetupKeepKey(ArmoryDialog):
-   def __init__(self, parent, main, device):
-      super(DlgSetupKeepKey, self).__init__(parent, main)
+      super(DlgCreateLedgerWallet, self).__init__(parent, main)
       self.device = device
 
 # Need to put circular imports at the end of the script to avoid an import deadlock
