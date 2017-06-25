@@ -2,20 +2,20 @@ from PyQt4.Qt import * #@UnusedWildImport
 from PyQt4.QtGui import * #@UnusedWildImport
 from qtdefines import * #@UnusedWildImport
 
-from trezorlib.client import TrezorClient
-from trezorlib.transport_hid import HidTransport
+from keepkeylib.client import KeepKeyClient
+from keepkeylib.transport_hid import HidTransport
 
-# Choose the trezor to setup
+# Choose the KeepKey to setup
 ################################################################################
-class DlgChooseTrezor(ArmoryDialog):
+class DlgChooseKeepKey(ArmoryDialog):
    #############################################################################
    def __init__(self, parent, main):
-      super(DlgChooseTrezor, self).__init__(parent, main)
+      super(DlgChooseKeepKey, self).__init__(parent, main)
 
       lblDescr = QRichLabel(self.tr(
-      '<b><u>Choose a Trezor to Setup</u></b> '
+      '<b><u>Choose a KeepKey to Setup</u></b> '
       '<br><br>'
-      'Use this window to setup choose which Trezor hardware wallet '
+      'Use this window to setup choose which KeepKey hardware wallet '
       'to setup.'))
 
 
@@ -30,7 +30,7 @@ class DlgChooseTrezor(ArmoryDialog):
       id = 0
       for d in transports:
          transport = HidTransport(d)
-         client = TrezorClient(transport)
+         client = KeepKeyClient(transport)
          self.devices.append(client)
          if client.features.initialized:
             rdo = QRadioButton(self.tr("%1 [Initialized, id: %2]").arg(client.features.label, 
@@ -60,7 +60,7 @@ class DlgChooseTrezor(ArmoryDialog):
       layout.addWidget(buttonBox)
       self.setLayout(layout)
 
-      self.setWindowTitle(self.tr('Choose a Trezor to Setup'))
+      self.setWindowTitle(self.tr('Choose a KeepKey to Setup'))
 
       self.setMinimumWidth(500)
       self.layout().setSizeConstraint(QLayout.SetFixedSize)
@@ -69,24 +69,24 @@ class DlgChooseTrezor(ArmoryDialog):
       idx = self.rdoBtnGrp.checkedId()
       device = self.devices[idx]
       if device.features.initialized:
-         dlg = DlgCreateTrezorWallet(self.parent, self.main, self.devices[idx])
+         dlg = DlgCreateKeepKeyWallet(self.parent, self.main, self.devices[idx])
       else:
-         dlg = DlgSetupTrezor(self.parent, self.main, self.devices[idx])
+         dlg = DlgSetupKeepKey(self.parent, self.main, self.devices[idx])
 
       self.accept()
       dlg.exec_()
 
 # Setup the wallet for an initialized trezor
-class DlgCreateTrezorWallet(ArmoryDialog):
+class DlgCreateKeepKeyWallet(ArmoryDialog):
    def __init__(self, parent, main, device):
-      super(DlgCreateTrezorWallet, self).__init__(parent, main)
+      super(DlgCreateKeepKeyWallet, self).__init__(parent, main)
       self.device = device
 
 
 # Setup an uninitialized Trezor
-class DlgSetupTrezor(ArmoryDialog):
+class DlgSetupKeepKey(ArmoryDialog):
    def __init__(self, parent, main, device):
-      super(DlgSetupTrezor, self).__init__(parent, main)
+      super(DlgSetupKeepKey, self).__init__(parent, main)
       self.device = device
 
 # Need to put circular imports at the end of the script to avoid an import deadlock
