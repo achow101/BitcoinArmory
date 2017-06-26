@@ -15,6 +15,7 @@ from armoryengine.BDM import TheBDM, BDM_BLOCKCHAIN_READY
 #from armoryengine.TrezorHW import DlgChooseTrezor
 from armoryengine.KeepKeyHW import DlgChooseKeepKey
 from armoryengine.LedgerHW import DlgChooseLedger
+from armoryengine.DigitalBitboxHW import DlgChooseDigitalBitbox
 from qtdefines import * #@UnusedWildImport
 from ui.WalletFrames import AdvancedOptionsFrame
 
@@ -225,9 +226,7 @@ class DlgImportHW(ArmoryDialog):
       elif self.keepkeyButton.isChecked():
          dlg = DlgChooseKeepKey(self.parent, self.main)
       elif self.digitalBitboxButton.isChecked():
-         QMessageBox.critical(self, self.tr('Unsupported Hardware Wallet'), \
-               self.tr('The chosen hardware wallet is not yet supported.'), QMessageBox.Ok)
-         return
+         dlg = DlgChooseDigitalBitbox(self.parent, self.main)
 
       self.accept()
       dlg.exec_()
