@@ -155,9 +155,7 @@ class DlgUniversalRestoreSelect(ArmoryDialog):
          # Setup or use a hardware wallet
          self.accept()
          dlg = DlgImportHW(self.parent, self.main)
-         if dlg.exec_():
-            self.main.addWalletToApplication(dlg.newWallet)
-            LOGINFO('Hardware Wallet setup!')
+         dlg.exec_()
 
 ################################################################################
 class DlgImportHW(ArmoryDialog):

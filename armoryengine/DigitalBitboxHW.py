@@ -111,6 +111,7 @@ def send_plain(msg, device):
         reply = json.loads(r)
     except Exception as e:
         print 'Exception caught while sending plaintext message to DigitalBitbox ' + str(e)
+        print msg
     return reply
 
 def send_encrypt(msg, password, device):
@@ -165,10 +166,9 @@ class DlgChooseDigitalBitbox(ArmoryDialog):
                device.open_path(d['path'])
 
                # Check if it has a password on it
-               reply = send_plain('{"ping":""', device)
-               if 'ping' not in reply:
-                  self.has_password = False
-               elif reply['ping'] == 'password':
+               reply = send_plain('{"ping":""}', device)
+               self.has_password = False
+               if reply['ping'] == 'password':
                   self.has_password = True
 
                if self.has_password:
@@ -206,27 +206,315 @@ class DlgChooseDigitalBitbox(ArmoryDialog):
 
    def nextDlg(self):
       idx = self.rdoBtnGrp.checkedId()
-      print idx
       if self.has_password:
-         dlg = DlgCreateDigitalBitboxWallet(self.parent, self.main, self.devices[idx])
+         # Get the passphrase
+         dlg = DlgEnterPassphrase(self.parent, self.main, self.devices[idx])
+         if dlg.exec_():
+            passphrase = str(dlg.edtPasswd.text())
+            dlg = DlgSeededDigitalBitbox(self.parent, self.main, self.devices[idx], passphrase)
       else:
          dlg = DlgSetupDigitalBitbox(self.parent, self.main, self.devices[idx])
 
       self.accept()
       dlg.exec_()
 
-# Setup the wallet for an initialized KeepKey
-class DlgCreateDigitalBitboxWallet(ArmoryDialog):
-   def __init__(self, parent, main, device):
-      super(DlgCreateDigitalBitboxWallet, self).__init__(parent, main)
-      self.device = device
-
-
-# Setup an uninitialized KeepKey
+# Setup an uninitialized Digital Bitbox
 class DlgSetupDigitalBitbox(ArmoryDialog):
    def __init__(self, parent, main, device):
       super(DlgSetupDigitalBitbox, self).__init__(parent, main)
       self.device = device
 
+      lblDescr = QRichLabel(self.tr(
+      '<b><u>Setup a Digital Bitbox</u></b> '
+      '<br><br>'
+      'Use this window to setup a Digital Bitbox hardware wallet '
+      'to setup.'))
+
+      lblInstruct = QRichLabel(self.tr('An uninitialized Digital Bitbox is deteced. Enter a '
+         'new passphrase in the next window. Remember this passphrase, you cannot access your coins or '
+         'the backup without this password. A backup will be made automatically when '
+         'the wallet is generated. The passphrase must be more than 4 characters and less than 64 characters.'))
+
+      self.btnAccept = QPushButton(self.tr('Next'))
+      self.btnCancel = QPushButton(self.tr("Cancel"))
+      self.connect(self.btnAccept, SIGNAL(CLICKED), self.nextDlg)
+      self.connect(self.btnCancel, SIGNAL(CLICKED), self.reject)
+      buttonBox = QDialogButtonBox()
+      buttonBox.addButton(self.btnAccept, QDialogButtonBox.AcceptRole)
+      buttonBox.addButton(self.btnCancel, QDialogButtonBox.RejectRole)
+
+      layout = QVBoxLayout()
+      layout.addWidget(lblInstruct)
+      layout.addWidget(buttonBox)
+      self.setLayout(layout)
+
+      self.setWindowTitle(self.tr('Setup a Digital Bitbox'))
+
+      self.setMinimumWidth(500)
+      self.layout().setSizeConstraint(QLayout.SetFixedSize)
+
+   def nextDlg(self):
+      dlg = DlgChangePassphrase(self.parent, self.main)
+      if dlg.exec_():
+         self.accept()
+         passphrase = str(dlg.edtPasswd1.text())
+         dlg.edtPasswd1.clear()
+         dlg.edtPasswd2.clear()
+
+         # Set the password on device
+         reply = send_plain('{"password":"' + passphrase + '"}', self.device)
+
+         # Check if the device is seeded
+         reply = send_encrypt('{"device":"info"}', passphrase, self.device)
+         if reply['device']['id'] <> "":
+            dlg = DlgSeededDigitalBitbox(self.parent, self.main, self.device, passphrase) # Already seeded
+         else:
+            dlg = DlgUnseededDigitalBitbox(self.parent, self.main, self.device, passphrase) # Seed if not initialized
+
+         dlg.exec_()
+      else:
+         self.reject()
+
+# Seed unseed digital bitbox
+# Last dialog, make wallet here and setup the device
+class DlgUnseededDigitalBitbox(ArmoryDialog):
+   def __init__(self, parent, main, device, passphrase):
+      super(DlgUnseededDigitalBitbox, self).__init__(parent, main)
+      self.device = device
+      self.passphrase = passphrase
+
+      lblDescrTitle = QRichLabel(self.tr('<b><u>Initialize a Digital Bitbox</u></b>'))
+      lblDescr = QRichLabel(self.tr('Choose how you want to initialize your Digital Bitbox'))
+
+      self.rdoGenerate = QRadioButton(self.tr('Generate a new random wallet'))
+      self.rdoRestore = QRadioButton(self.tr('Load a wallet from the micro SD card'))
+      btngrp = QButtonGroup(self)
+      btngrp.addButton(self.rdoGenerate)
+      btngrp.addButton(self.rdoRestore)
+      btngrp.setExclusive(True)
+
+      self.rdoGenerate.setChecked(True)
+
+      self.btnOkay = QPushButton(self.tr('Finish'))
+      self.btnCancel = QPushButton(self.tr('Cancel'))
+      buttonBox = QDialogButtonBox()
+      buttonBox.addButton(self.btnOkay, QDialogButtonBox.AcceptRole)
+      buttonBox.addButton(self.btnCancel, QDialogButtonBox.RejectRole)
+      self.connect(self.btnOkay, SIGNAL(CLICKED), self.finish)
+      self.connect(self.btnCancel, SIGNAL(CLICKED), self.reject)
+
+
+      layout = QVBoxLayout()
+      layout.addWidget(lblDescrTitle)
+      layout.addWidget(lblDescr)
+      layout.addWidget(HLINE())
+      layout.addWidget(self.rdoGenerate)
+      layout.addWidget(self.rdoRestore)
+      layout.addWidget(buttonBox)
+      self.setLayout(layout)
+      self.setMinimumWidth(450)
+
+      self.setWindowTitle(self.tr('Initialize a Digital Bitbox'))
+
+   def finish(self):
+      if self.rdoGenerate.isChecked():
+         key = self.passphrase # TODO: Stretch key
+         filename = "armory_.wallet.pdf" # TODO: Build actual filename from wallet file
+         msg = '{"seed":{"source": "create", "key": "%s", "filename": "%s", "entropy": "%s"}}' % (key, filename, 'Digital Bitbox Armory Implementation')
+         reply = send_encrypt(msg, self.passphrase, self.device)
+         if 'error' in reply:
+            QMessageBox.critical(self, self.tr("Device Error"), str(reply['error']['message']), QMessageBox.Close)
+         else:
+            self.accept()
+      elif self.rdoRestore.isChecked():
+         dlg = DlgLoadBackup(self.parent, self.main, self.device, self.passphrase, False) # Don't need to show message when restoring to uninitialized device
+         dlg.exec_()
+         self.accept()
+
+# Already seeded digital bitbox
+# Last dialog, make wallet here and setup the device
+class DlgSeededDigitalBitbox(ArmoryDialog):
+   def __init__(self, parent, main, device, passphrase):
+      super(DlgSeededDigitalBitbox, self).__init__(parent, main)
+      self.device = device
+      self.passphrase = passphrase
+
+      lblDescrTitle = QRichLabel(self.tr('<b><u>Initialize a Digital Bitbox</u></b>'))
+      lblDescr = QRichLabel(self.tr('The Digital Bitbox is already seeded. Choose how you want to initialize your Digital Bitbox'))
+
+      self.rdoGenerate = QRadioButton(self.tr('Create a wallet with the current seed'))
+      self.rdoRestore = QRadioButton(self.tr('Load a wallet from the micro SD card'))
+      self.rdoErase = QRadioButton(self.tr('Erase the Digital Bitbox'))
+      btngrp = QButtonGroup(self)
+      btngrp.addButton(self.rdoGenerate)
+      btngrp.addButton(self.rdoRestore)
+      btngrp.addButton(self.rdoErase)
+      btngrp.setExclusive(True)
+
+      self.rdoGenerate.setChecked(True)
+
+      self.btnOkay = QPushButton(self.tr('Finish'))
+      self.btnCancel = QPushButton(self.tr('Cancel'))
+      buttonBox = QDialogButtonBox()
+      buttonBox.addButton(self.btnOkay, QDialogButtonBox.AcceptRole)
+      buttonBox.addButton(self.btnCancel, QDialogButtonBox.RejectRole)
+      self.connect(self.btnOkay, SIGNAL(CLICKED), self.finish)
+      self.connect(self.btnCancel, SIGNAL(CLICKED), self.reject)
+
+
+      layout = QVBoxLayout()
+      layout.addWidget(lblDescrTitle)
+      layout.addWidget(lblDescr)
+      layout.addWidget(HLINE())
+      layout.addWidget(self.rdoGenerate)
+      layout.addWidget(self.rdoRestore)
+      layout.addWidget(self.rdoErase)
+      layout.addWidget(buttonBox)
+      self.setLayout(layout)
+      self.setMinimumWidth(450)
+
+      self.setWindowTitle(self.tr('Initialize a Digital Bitbox'))
+
+   def finish(self):
+      if self.rdoGenerate.isChecked():
+         # Use existing seed
+         # TODO: Make the Armory wallet file
+         self.accept()
+      elif self.rdoErase.isChecked():
+         confirm = QMessageBox.warning(self, self.tr('Confirm Erase'), \
+                  self.tr('Are you sure you want to erase this Digital Bitbox?'), QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+         if confirm == QMessageBox.Yes:
+            # Show instructions
+            box = QMessageBox(QMessageBox.Information, self.tr('Confirm Erase'), self.tr('To continue, touch the Digital Bitbox\'s light for 3 seconds.\n'
+               'To cancel, briefly touch the light or wait for the timeout.\n\nPlease wait.'), parent=self)
+            box.setModal(True)
+            box.show()
+
+            # Perform erase
+            reply = send_encrypt('{"reset":"__ERASE__"}', self.passphrase, self.device)
+            if 'error' in reply:
+               QMessageBox.critical(self, self.tr('Device Error'), reply['error']['message'], QMessageBox.Close)
+            else:
+               QMessageBox.information(self, self.tr("Device Erase"), self.tr("Device Erased"), QMessageBox.Close)
+               self.accept()
+            box.done(0)
+      elif self.rdoRestore.isChecked():
+         dlg = DlgLoadBackup(self.parent, self.main, self.device, self.passphrase)
+         self.accept()
+         dlg.exec_()
+
+
+class DlgLoadBackup(ArmoryDialog):
+   def __init__(self, parent, main, device, passphrase, show_msg = True):
+      super(DlgLoadBackup, self).__init__(parent, main)
+      self.device = device
+      self.passphrase = passphrase
+      self.show_msg = show_msg
+
+      lblDescrTitle = QRichLabel(self.tr('<b><u>Restore a Digital Bitbox</u></b>'))
+      lblDescr = QRichLabel(self.tr('Choose a Backup file to restore from'))
+
+      layout = QVBoxLayout()
+      layout.addWidget(lblDescrTitle)
+      layout.addWidget(lblDescr)
+      layout.addWidget(HLINE())
+
+      # Get list of backups
+      self.btngrp = QButtonGroup(self)
+      self.btngrp.setExclusive(True)
+      backup_files = send_encrypt('{"backup":"list"}', self.passphrase, self.device)
+      if 'error' in backup_files:
+         QMessageBox.critical(self, self.tr("Device Error"), str(backup_files['error']['message']), QMessageBox.Close)
+         return
+      for f in backup_files['backup']:
+         rdo = QRadioButton(f)
+         self.btngrp.addButton(rdo)
+         rdo.setChecked(True)
+         layout.addWidget(rdo)
+
+      self.btnOkay = QPushButton(self.tr('Finish'))
+      self.btnCancel = QPushButton(self.tr('Cancel'))
+      buttonBox = QDialogButtonBox()
+      buttonBox.addButton(self.btnOkay, QDialogButtonBox.AcceptRole)
+      buttonBox.addButton(self.btnCancel, QDialogButtonBox.RejectRole)
+      self.connect(self.btnOkay, SIGNAL(CLICKED), self.finish)
+      self.connect(self.btnCancel, SIGNAL(CLICKED), self.reject)
+
+      layout.addWidget(buttonBox)
+      self.setLayout(layout)
+      self.setMinimumWidth(450)
+
+      self.setWindowTitle(self.tr('Initialize a Digital Bitbox'))
+
+   def finish(self):
+      dlg = DlgEnterPassphrase(self, self.parent, self.main)
+      if dlg.exec_():
+         checked = self.btngrp.checkedButton()
+         key = dlg.edtPasswd.text() # TODO: key stretch
+
+         if self.show_msg:
+            # Show instructions
+            box = QMessageBox(QMessageBox.Information, self.tr('Confirm Backup Restore'), self.tr('To continue, touch the Digital Bitbox\'s light for 3 seconds.\n'
+               'To cancel, briefly touch the light or wait for the timeout.\n\nPlease wait'), parent=self)
+            box.setModal(True)
+            box.show()
+
+         # Actually load backup
+         msg = '{"seed":{"source": "backup", "key": "%s", "filename": "%s"}}' % (key, checked.text())
+         reply = send_encrypt(msg, self.passphrase, self.device)
+         if 'error' in reply:
+            QMessageBox.critical(self, self.tr("Device Error"), str(reply['error']['message']), QMessageBox.Ok)
+         else:
+            self.accept()
+         box.done(0)
+
+# Dialog to enter passphrase
+class DlgEnterPassphrase(ArmoryDialog):
+   def __init__(self, parent, main, device):
+      super(DlgEnterPassphrase, self).__init__(parent, main)
+      self.device = device
+
+      lblDescr = QLabel(self.tr("Enter your passphrase for this Digital Bitbox"))
+      lblPasswd = QLabel(self.tr("Passphrase:"))
+      self.edtPasswd = QLineEdit()
+      self.edtPasswd.setEchoMode(QLineEdit.Password)
+      self.edtPasswd.setMinimumWidth(MIN_PASSWD_WIDTH(self))
+      self.edtPasswd.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+
+      self.btnAccept = QPushButton(self.tr("Accept"))
+      self.btnCancel = QPushButton(self.tr("Cancel"))
+      self.connect(self.btnAccept, SIGNAL(CLICKED), self.accept)
+      self.connect(self.btnCancel, SIGNAL(CLICKED), self.reject)
+      buttonBox = QDialogButtonBox()
+      buttonBox.addButton(self.btnAccept, QDialogButtonBox.AcceptRole)
+      buttonBox.addButton(self.btnCancel, QDialogButtonBox.RejectRole)
+
+      layout = QGridLayout()
+      layout.addWidget(lblDescr, 1, 0, 1, 2)
+      layout.addWidget(lblPasswd, 2, 0, 1, 1)
+      layout.addWidget(self.edtPasswd, 2, 1, 1, 1)
+
+      self.btnAccept = QPushButton(self.tr('Next'))
+      self.btnCancel = QPushButton(self.tr("Cancel"))
+      self.connect(self.btnAccept, SIGNAL(CLICKED), self.checkPassword)
+      self.connect(self.btnCancel, SIGNAL(CLICKED), self.reject)
+      buttonBox = QDialogButtonBox()
+      buttonBox.addButton(self.btnAccept, QDialogButtonBox.AcceptRole)
+      buttonBox.addButton(self.btnCancel, QDialogButtonBox.RejectRole)
+      layout.addWidget(buttonBox, 3, 1, 1, 1)
+
+      self.setLayout(layout)
+
+   def checkPassword(self):
+      # Blink LED to make sure password is right
+      reply = send_encrypt('{"led":"blink"}', str(self.edtPasswd.text()), self.device)
+      if 'error' in reply:
+         if reply['error']['code'] == 100:
+            QMessageBox.critical(self, self.tr('Incorrect Password'), self.tr('The password you entered was incorrect.'), QMessageBox.Ok)
+         else:
+            QMessageBox.critical(self, self.tr('Device Error'), str(reply['error']['message']), QMessageBox.Ok)
+      else:
+         self.accept()
+
 # Need to put circular imports at the end of the script to avoid an import deadlock
-from qtdialogs import CLICKED
+from qtdialogs import CLICKED, DlgChangePassphrase, MIN_PASSWD_WIDTH
