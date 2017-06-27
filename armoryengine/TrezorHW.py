@@ -66,6 +66,7 @@ class DlgChooseTrezor(ArmoryDialog):
       self.layout().setSizeConstraint(QLayout.SetFixedSize)
 
    def nextDlg(self):
+
       idx = self.rdoBtnGrp.checkedId()
       device = self.devices[idx]
       if device.features.initialized:
@@ -79,6 +80,7 @@ class DlgChooseTrezor(ArmoryDialog):
 # Setup the wallet for an initialized trezor
 class DlgCreateTrezorWallet(ArmoryDialog):
    def __init__(self, parent, main, device):
+
       super(DlgCreateTrezorWallet, self).__init__(parent, main)
       self.device = device
 
@@ -86,6 +88,7 @@ class DlgCreateTrezorWallet(ArmoryDialog):
 # Setup an uninitialized Trezor
 class DlgSetupTrezor(ArmoryDialog):
    def __init__(self, parent, main, device):
+
       super(DlgSetupTrezor, self).__init__(parent, main)
       self.device = device
 

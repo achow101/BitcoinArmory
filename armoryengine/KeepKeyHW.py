@@ -11,7 +11,6 @@ class DlgChooseKeepKey(ArmoryDialog):
    #############################################################################
    def __init__(self, parent, main):
       super(DlgChooseKeepKey, self).__init__(parent, main)
-
       lblDescr = QRichLabel(self.tr(
       '<b><u>Choose a KeepKey to Setup</u></b> '
       '<br><br>'
@@ -66,6 +65,7 @@ class DlgChooseKeepKey(ArmoryDialog):
       self.layout().setSizeConstraint(QLayout.SetFixedSize)
 
    def nextDlg(self):
+
       idx = self.rdoBtnGrp.checkedId()
       device = self.devices[idx]
       if device.features.initialized:
@@ -79,6 +79,7 @@ class DlgChooseKeepKey(ArmoryDialog):
 # Setup the wallet for an initialized KeepKey
 class DlgCreateKeepKeyWallet(ArmoryDialog):
    def __init__(self, parent, main, device):
+
       super(DlgCreateKeepKeyWallet, self).__init__(parent, main)
       self.device = device
 
@@ -86,6 +87,7 @@ class DlgCreateKeepKeyWallet(ArmoryDialog):
 # Setup an uninitialized KeepKey
 class DlgSetupKeepKey(ArmoryDialog):
    def __init__(self, parent, main, device):
+
       super(DlgSetupKeepKey, self).__init__(parent, main)
       self.device = device
 

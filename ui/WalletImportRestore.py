@@ -12,7 +12,7 @@ from PyQt4.Qt import * #@UnusedWildImport
 from PyQt4.QtGui import * #@UnusedWildImport
 
 from armoryengine.BDM import TheBDM, BDM_BLOCKCHAIN_READY
-#from armoryengine.TrezorHW import DlgChooseTrezor
+from armoryengine.TrezorHW import DlgChooseTrezor
 from armoryengine.KeepKeyHW import DlgChooseKeepKey
 from armoryengine.LedgerHW import DlgChooseLedger
 from armoryengine.DigitalBitboxHW import DlgChooseDigitalBitbox
