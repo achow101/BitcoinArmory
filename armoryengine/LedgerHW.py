@@ -11,7 +11,7 @@ import hid
 
 from armoryengine.HardwareWallet import HardwareWallet, LEDGER_ENUM
 from armoryengine.ArmoryUtils import *
-from armoryengine.PyBtcWallet import buildWltFileName
+from armoryengine.PyBtcWallet import buildWltFileName, WLT_UPDATE_ADD, WLT_DATATYPE_KEYDATA
 
 # Choose the Ledger to setup
 ################################################################################
@@ -91,8 +91,11 @@ class DlgChooseLedger(ArmoryDialog):
       firstAddrPub = compress_public_key(result['publicKey'])
       print result
 
-      self.newWallet = LedgerWallet().createNewWallet(masterPublicKey=mpk,
+      self.newWallet = LedgerWallet()
+      self.newWallet.createNewWallet(masterPublicKey=mpk,
          mpkChaincode=chaincode, firstAddrPub=firstAddrPub, device=device, deviceId=deviceId)
+
+      self.main.addWalletToApplication(self.newWallet)
 
       self.accept()
 
@@ -150,8 +153,8 @@ class LedgerWallet(HardwareWallet):
 
       firstAddrSecData = SecureBinaryData(str(firstAddrPub))
       firstAddr = PyBtcAddress()
-      firstAddr.addrStr20 = mpkSecData.getHash160()
-      firstAddr.binPublicKey65 = mpkSecData
+      firstAddr.addrStr20 = firstAddrSecData.getHash160()
+      firstAddr.binPublicKey65 = firstAddrSecData
       firstAddr.isInitialized = True
       firstAddr.isLocked = False
       firstAddr.useEncryption = False
@@ -232,17 +235,15 @@ class LedgerWallet(HardwareWallet):
       result = self.device.getWalletPublicKey("44'/0'/0'/" + str(self.lastComputedChainIndex + 1))
       newAddrPub = compress_public_key(result['publicKey'])
 
-      newAddrSecPub = SecureBinaryData(str(firstAddrPub))
+      newAddrSecPub = SecureBinaryData(str(newAddrPub))
       newAddr = PyBtcAddress()
-      newAddr.addrStr20 = mpkSecData.getHash160()
-      newAddr.binPublicKey65 = mpkSecData
+      newAddr.addrStr20 = newAddrSecPub.getHash160()
+      newAddr.binPublicKey65 = newAddrSecPub
       newAddr.isInitialized = True
       newAddr.isLocked = False
       newAddr.useEncryption = False
       newAddr.chainIndex = self.lastComputedChainIndex + 1
       newAddr.chaincode = SecureBinaryData(str(result['chainCode']))
-      new160  = firstAddr.getAddr160()
-
 
       new160 = newAddr.getAddr160()
       newDataLoc = self.walletFileSafeUpdate( \

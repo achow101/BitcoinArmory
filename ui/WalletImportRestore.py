@@ -11,6 +11,7 @@ import math
 from PyQt4.Qt import * #@UnusedWildImport
 from PyQt4.QtGui import * #@UnusedWildImport
 
+from armoryengine.PyBtcWallet import PyBtcWallet
 from armoryengine.BDM import TheBDM, BDM_BLOCKCHAIN_READY
 from armoryengine.TrezorHW import DlgChooseTrezor
 from armoryengine.KeepKeyHW import DlgChooseKeepKey
@@ -2328,5 +2329,4 @@ class DlgWltRecoverWallet(ArmoryDialog):
       self.edtWalletPath.setText(pathSelect)
 
 # Need to put circular imports at the end of the script to avoid an import deadlock
-from qtdialogs import CLICKED, STRETCH, DlgChangePassphrase
-
+from qtdialogs import CLICKED, STRETCH, DlgChangePassphrase, DlgProgress

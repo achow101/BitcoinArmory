@@ -55,11 +55,13 @@ class HardwareWallet(PyBtcWallet):
    This class is a wrapper for PyBtcWallet to work with hardware wallets.
    This will be replaced with the python proxy for cppwallets later.
 
+   The root key is the identifier and the thing that will allow us to figure out
+   what device belongs to this wallet
+
    For now, uses some of the unused space in PyBtcWallet:
    ---
    Hardware   -- (1) Enum for hardware type as defined in the constants of this file
-   Device ID  -- (256) String with the device ID or serial number
-   UNUSED     -- (767) unused space for future expansion of wallet file
+   UNUSED     -- (1023) unused space for future expansion of wallet file
    ---
    """
   #############################################################################
@@ -256,12 +258,8 @@ class HardwareWallet(PyBtcWallet):
       self.offsetHardwareType = binPacker.getSize() - startByte
       binPacker.put(UINT8, self.hardwareType)
 
-      # Device ID string
-      self.offsetDeviceId = binPacker.getSize() - startByte
-      binPacker.put(BINARY_CHUNK, self.deviceId, width=256)
-
-      # In wallet version 1.40, this next 767 bytes is unused -- may be used in future
-      binPacker.put(BINARY_CHUNK, '\x00'*767)
+      # In wallet version 1.40, this next 1023 bytes is unused -- may be used in future
+      binPacker.put(BINARY_CHUNK, '\x00'*1023)
       return binPacker.getSize() - startByte
 
    #############################################################################
@@ -337,12 +335,8 @@ class HardwareWallet(PyBtcWallet):
       self.offsetHardwareType = binUnpacker.getPosition()
       self.hardwareType = binUnpacker.get(UINT8)
 
-      # Device ID string
-      self.offsetDeviceId = binUnpacker.getPosition()
-      self.deviceId = binUnpacker.get(BINARY_CHUNK, 256).strip('\x00')
-
-      # In wallet version 1.40, the next 767 bytes is unused -- may be used in future
-      binUnpacker.advance(767)
+      # In wallet version 1.40, the next 1023 bytes is unused -- may be used in future
+      binUnpacker.advance(1023)
 
       # TODO: automatic conversion if the code uses a newer wallet
       #       version than the wallet... got a manual script, but it
