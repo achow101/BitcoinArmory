@@ -16,4 +16,4 @@ from armoryengine.Timer import *
 from armoryengine.Transaction import *
 from armoryengine.MultiSigUtils import *
 from armoryengine.UserAddressUtils import *
-
+from armoryengine.HardwareWallet import *

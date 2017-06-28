@@ -10,13 +10,13 @@ import shutil
 
 from armoryengine.PyBtcWallet import PyBtcWallet, buildWltFileName, CheckWalletRegistration
 
-#from CppBlockUtils import SecureBinaryData, KdfRomix, CryptoAES, CryptoECDSA
-#import CppBlockUtils as Cpp
-#from armoryengine.ArmoryUtils import *
-#from armoryengine.BinaryPacker import *
-#from armoryengine.BinaryUnpacker import *
-#from armoryengine.Timer import *
-#from armoryengine.Decorators import singleEntrantMethod
+from CppBlockUtils import SecureBinaryData
+import CppBlockUtils as Cpp
+from armoryengine.ArmoryUtils import *
+from armoryengine.BinaryPacker import *
+from armoryengine.BinaryUnpacker import *
+from armoryengine.Timer import *
+from armoryengine.Decorators import singleEntrantMethod
 # This import is causing a circular import problem when used by findpass and promokit
 # it is imported at the end of the file. Do not add it back at the begining
 # from armoryengine.Transaction import *
@@ -64,7 +64,7 @@ class HardwareWallet(PyBtcWallet):
    """
   #############################################################################
    def __init__(self):
-      super().__init__()
+      super(HardwareWallet, self).__init__()
       self.version        = HARDWARE_WALLET_VERSION  # (Major, Minor, Minor++, even-more-minor)
       self.watchingOnly   = True # Hardware wallets are always watching only
       self.useEncryption  = False # Watching only wallets are never enecrypted
@@ -73,12 +73,10 @@ class HardwareWallet(PyBtcWallet):
       self.hardwareType = NO_HARDWARE_ENUM
 
    #############################################################################
-   def createNewWallet(self, masterPublicKey, firstAddrPub, newWalletFilePath=None, \
-                             IV=None, kdfTargSec=DEFAULT_COMPUTE_TIME_TARGET, \
-                             kdfMaxMem=DEFAULT_MAXMEM_LIMIT, \
+   def createNewWallet(self, masterPublicKey, mpkChaincode, firstAddrPub, newWalletFilePath=None, \
                              shortLabel='', longLabel='', isActuallyNew=True, \
                              doRegisterWithBDM=True, skipBackupFile=False, \
-                             extraEntropy=None, Progress=emptyFunc, \
+                             Progress=emptyFunc, \
                              armoryHomeDir = ARMORY_HOME_DIR):
       """
       This method will create a new wallet, using as much customizability
@@ -94,12 +92,6 @@ class HardwareWallet(PyBtcWallet):
       created via SecureBinaryData(pythonStr).  This method will apply
       the passphrase so that the wallet is "born" encrypted.
 
-      The field plainRootKey could be used to recover a written backup
-      of a wallet, since all addresses are deterministically computed
-      from the root address.  This obviously won't reocver any imported
-      keys, but does mean that you can recover your ENTIRE WALLET from
-      only those 32 plaintext bytes AND the 32-byte chaincode.
-
       We skip the atomic file operations since we don't even have
       a wallet file yet to safely update.
 
@@ -111,14 +103,10 @@ class HardwareWallet(PyBtcWallet):
       # Hardware wallets have no encryption, so no kdf or encryption params
       self.kdfKey = None
       
-      # Zero out rootkey and chaincode
-      plainRootKey = SecureBinaryData('\x00'*32)
-      chaincode = SecureBinaryData('\xff'*32)
-
       # Create the root address object
       # Root address will be the address forthe  BIP 44 master public key
       rootAddr = PyBtcAddress().createFromPublicKeyData(masterPublicKey)
-      rootAddr.markAsRootAddr(chaincode)
+      rootAddr.markAsRootAddr(mpkChaincode)
 
       firstAddr = PyBtcAddress().createFromPublicKeyData(firstAddrPub)
       first160  = firstAddr.getAddr160()
@@ -212,22 +200,6 @@ class HardwareWallet(PyBtcWallet):
                                   self.addrMap[new160].walletByteLoc, \
                                   self.addrMap[new160].serialize()]]  )
       return self.addrMap[new160]
-
-   #############################################################################
-   def fillAddressPool(self, numPool=None, isActuallyNew=True, 
-                       doRegister=True, Progress=emptyFunc):
-      """
-      Usually, when we fill the address pool, we are generating addresses
-      for the first time, and thus there is no chance it's ever seen the
-      blockchain.  However, this method is also used for recovery/import 
-      of wallets, where the address pool has addresses that probably have
-      transactions already in the blockchain.  
-
-      Filling the address pool is hardware specific so this is just a dummy
-      that should be overriden later.
-      """
-      raise NotImplementedError("This method should be implemented by the child "
-         "classes not the base class.")
 
    #############################################################################
    def getRootPKCC(self, pkIsCompressed=False):
@@ -413,79 +385,6 @@ class HardwareWallet(PyBtcWallet):
       """
       raise NotImplementedError("This method should never be called on a hardware "
          "wallet as all addreses are imported.")
-
-   #############################################################################
-   def importExternalAddressData(self, pubKey=None,  pubChk=None, \
-                                       addr20=None,  addrChk=None, \
-                                       firstTime=UINT32_MAX, \
-                                       firstBlk=UINT32_MAX, lastTime=0, \
-                                       lastBlk=0, chainIndex = -2):
-      """
-      This wallet fully supports importing external keys, even though it is
-      a deterministic wallet: determinism only adds keys to the pool based
-      on the address-chain, but there's nothing wrong with adding new keys
-      not on the chain.
-
-      We don't know when this address was created, so we have to set its
-      first/last-seen times to 0, to make sure we search the whole blockchain
-      for tx related to it.  This data will be updated later after we've done
-      the search and know for sure when it is "relevant".
-      (alternatively, if you know it's first-seen time for some reason, you
-      can supply it as an input, but this seems rare: we don't want to get it
-      wrong or we could end up missing wallet-relevant transactions)
-
-      DO NOT CALL FROM A BDM THREAD FUNCTION.  IT MAY DEADLOCK.
-      """
-      computedPubKey = None
-      computedAddr20 = None
-
-      # If public key is provided, we prep it so we can verify Pub/Priv match
-      if pubKey:
-         if isinstance(pubKey, str):
-            pubKey = SecureBinaryData(pubKey)
-         if pubChk:
-            pubKey = SecureBinaryData(verifyChecksum(pubKey.toBinStr(), pubChk))
-
-         if not computedAddr20:
-            computedAddr20 = convertKeyDataToAddress(pubKey=pubKey)
-
-      # The 20-byte address (pubkey hash160) should always be a python string
-      if addr20:
-         if not isinstance(pubKey, str):
-            addr20 = addr20.toBinStr()
-         if addrChk:
-            addr20 = verifyChecksum(addr20, addrChk)
-
-      # Now a few sanity checks
-      if self.addrMap.has_key(addr20):
-         LOGWARN('The address is already in your wallet!')
-         return None
-
-      addr20 = computedAddr20
-
-      if self.addrMap.has_key(addr20):
-         LOGERROR('The computed address is already in your wallet!')
-         return None
-
-      if pubKey:
-         securePubKey = SecureBinaryData(pubKey)
-         newAddr = PyBtcAddress().createFromPublicKeyData(securePubKey)
-      else:
-         newAddr = PyBtcAddress().createFromPublicKeyHash160(addr20)
-
-      newAddr.chaincode  = SecureBinaryData('\xff'*32)
-      newAddr.chainIndex = chainIndex
-      newAddr.timeRange = [firstTime, lastTime]
-      newAddr.blkRange  = [firstBlk,  lastBlk ]
-      #newAddr.binInitVect16  = SecureBinaryData().GenerateRandom(16)
-      newAddr160 = newAddr.getAddr160()
-
-      newDataLoc = self.walletFileSafeUpdate( \
-         [[WLT_UPDATE_ADD, WLT_DATATYPE_KEYDATA, newAddr160, newAddr]])
-      self.addrMap[newAddr160] = newAddr.copy()
-      self.addrMap[newAddr160].walletByteLoc = newDataLoc[0] + 21
-      
-      self.linearAddr160List.append(newAddr160)
       
    #############################################################################
    def signUnsignedTx(self, ustx, hashcode=1):
@@ -519,6 +418,20 @@ class HardwareWallet(PyBtcWallet):
          # But too bad. This is a hardware wallet hack and we can't compute 
          # anymore addresses. Throw an exception
          raise WalletAddressError('Address for chain index does not exist')
+
+
+   #############################################################################
+   def computeNextAddress(self, addr160=None, isActuallyNew=True, doRegister=True):
+      """
+      Use this to extend the chain beyond the last-computed address.
+
+      We will usually be computing the next address from the tip of the 
+      chain, but I suppose someone messing with the file format may
+      leave gaps in the chain requiring some to be generated in the middle
+      (then we can use the addr160 arg to specify which address to extend)
+      """
+      raise NotImplementedError('ComputeNextAddress is wallet specific and not '
+         'implemented in the base class')
          
 
 # Putting this at the end because of the circular dependency

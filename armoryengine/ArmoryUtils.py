@@ -248,6 +248,8 @@ class UstxError(Exception): pass
 class P2SHNotSupportedError(Exception): pass
 class NonBase58CharacterError(Exception): pass
 class isMSWallet(Exception): pass
+class DeviceNotAvailableError(Exception): pass
+
 
 # Witness variables and constants
 WITNESS = False
