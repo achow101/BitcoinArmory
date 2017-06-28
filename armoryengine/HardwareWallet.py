@@ -63,6 +63,8 @@ class HardwareWallet(PyBtcWallet):
    Hardware   -- (1) Enum for hardware type as defined in the constants of this file
    UNUSED     -- (1023) unused space for future expansion of wallet file
    ---
+
+   NOTE: ALL KEYS MUST BE UNCOMPRESSED FOR NOW
    """
   #############################################################################
    def __init__(self):
@@ -75,11 +77,11 @@ class HardwareWallet(PyBtcWallet):
       self.hardwareType = NO_HARDWARE_ENUM
 
    #############################################################################
-   def createNewWallet(self, masterPublicKey, mpkChaincode, firstAddrPub, newWalletFilePath=None, \
-                             shortLabel='', longLabel='', isActuallyNew=True, \
-                             doRegisterWithBDM=True, skipBackupFile=False, \
-                             Progress=emptyFunc, \
-                             armoryHomeDir = ARMORY_HOME_DIR):
+   def createNewWallet(self, masterPublicKey, mpkChaincode, firstAddrPub, \
+                           newWalletFilePath=None, \
+                           shortLabel='', longLabel='', isActuallyNew=True, \
+                           doRegisterWithBDM=True, skipBackupFile=False, \
+                           Progress=emptyFunc, armoryHomeDir = ARMORY_HOME_DIR):
       """
       This method will create a new wallet, using as much customizability
       as you want.  You can enable encryption, and set the target params
@@ -120,13 +122,13 @@ class HardwareWallet(PyBtcWallet):
       self.useEncryption = False
       self.addrMap['ROOT'] = rootAddr
       self.addrMap[firstAddr.getAddr160()] = firstAddr
-      self.uniqueIDBin = (ADDRBYTE + firstAddr.getAddr160()[:5])[::-1]
+      self.uniqueIDBin = (ADDRBYTE + rootAddr.extendAddressChain().getAddr160()[:5])[::-1]
       self.uniqueIDB58 = binary_to_base58(self.uniqueIDBin)
       self.labelName  = shortLabel[:32]   # aka "Wallet Name"
       self.labelDescr  = longLabel[:256]  # aka "Description"
       self.lastComputedChainAddr160 = first160
-      self.lastComputedChainIndex  = first160.chainIndex
-      self.highestUsedChainIndex   = first160.chainIndex - 1
+      self.lastComputedChainIndex  = firstAddr.chainIndex
+      self.highestUsedChainIndex   = firstAddr.chainIndex-1
       self.wltCreateDate = long(RightNow())
       self.linearAddr160List = [first160]
       self.chainIndexMap[firstAddr.chainIndex] = first160
