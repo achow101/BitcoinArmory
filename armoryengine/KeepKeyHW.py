@@ -2,8 +2,95 @@ from PyQt4.Qt import * #@UnusedWildImport
 from PyQt4.QtGui import * #@UnusedWildImport
 from qtdefines import * #@UnusedWildImport
 
-from keepkeylib.client import KeepKeyClient
+from keepkeylib.client import ProtocolMixin, BaseClient
 from keepkeylib.transport_hid import HidTransport
+
+import keepkeylib.messages_keepkey_pb2 as proto
+import keepkeylib.types_keepkey_pb2 as types
+from keepkeylib.qt.pinmatrix import PinMatrixWidget
+
+# GUI Mixin Borrowed from Electrum
+class GuiMixin(object):
+
+   def callback_ButtonRequest(self, msg):
+      return proto.ButtonAck()
+
+   def callback_PinMatrixRequest(self, msg):
+      if msg.type == 2:
+         # Entering a new private-key-bearing
+         lblInstruct = QLabel(QObject().tr("Enter a new PIN for your KeepKey"))
+      elif msg.type == 3:
+         lblInstruct = QLabel(QObject().tr("Re-enter the new PIN for your %s.\n\n"
+         "NOTE: the positions of the numbers have changed!"))
+      else:
+         lblInstruct = QLabel(QObject().tr("Enter your current %s PIN:"))
+
+      matrix = DlgPinMatrix(lblInstruct=lblInstruct)
+      matrix.exec_()
+
+      pin = matrix.pin
+
+      if not pin:
+         return proto.Cancel()
+      return proto.PinMatrixAck(pin=pin)
+
+   def callback_PassphraseRequest(self, req):
+      if self.creating_wallet:
+         msg = _("Enter a passphrase to generate this wallet.  Each time "
+               "you use this wallet your %s will prompt you for the "
+               "passphrase.  If you forget the passphrase you cannot "
+               "access the bitcoins in the wallet.") % self.device
+      else:
+         msg = _("Enter the passphrase to unlock this wallet:")
+      passphrase = self.handler.get_passphrase(msg, self.creating_wallet)
+      if passphrase is None:
+         return proto.Cancel()
+      passphrase = bip39_normalize_passphrase(passphrase)
+      return proto.PassphraseAck(passphrase=passphrase)
+
+   def callback_WordRequest(self, msg):
+      self.step += 1
+      msg = _("Step %d/24.  Enter seed word as explained on "
+               "your %s:") % (self.step, self.device)
+      word = self.handler.get_word(msg)
+      # Unfortunately the device can't handle self.proto.Cancel()
+      return proto.WordAck(word=word)
+
+   def callback_CharacterRequest(self, msg):
+      char_info = self.handler.get_char(msg)
+      if not char_info:
+         return self.proto.Cancel()
+      return proto.CharacterAck(**char_info)
+
+class KeepKeyClient(GuiMixin, ProtocolMixin, BaseClient):
+   def __init__(self, transport):
+      BaseClient.__init__(self, transport)
+      ProtocolMixin.__init__(self, transport)
+      GuiMixin.__init__(self)
+
+class DlgPinMatrix(QDialog):
+   def __init__(self, lblInstruct):
+      super(DlgPinMatrix, self).__init__()
+      self.matrix = PinMatrixWidget()
+      self.pin = ""
+
+      self.btnAccept = QPushButton(self.tr('Accept'))
+      self.btnCancel = QPushButton(self.tr("Cancel"))
+      self.connect(self.btnAccept, SIGNAL(CLICKED), self.clicked)
+      self.connect(self.btnCancel, SIGNAL(CLICKED), self.reject)
+      buttonBox = QDialogButtonBox()
+      buttonBox.addButton(self.btnAccept, QDialogButtonBox.AcceptRole)
+      buttonBox.addButton(self.btnCancel, QDialogButtonBox.RejectRole)
+
+      vbox = QVBoxLayout()
+      vbox.addWidget(lblInstruct)
+      vbox.addWidget(self.matrix)
+      vbox.addWidget(buttonBox)
+      self.setLayout(vbox)
+
+   def clicked(self):
+      self.pin = str(self.matrix.get_value())
+      self.accept()
 
 # Choose the KeepKey to setup
 ################################################################################
@@ -35,8 +122,7 @@ class DlgChooseKeepKey(ArmoryDialog):
             rdo = QRadioButton(self.tr("%1 [Initialized, id: %2]").arg(client.features.label,
                client.features.device_id))
          else:
-            rdo = QRadioButton(self.tr("unnamed [Uninitialized, id: %2").arg(client.features.label,
-               client.features.device_id))
+            rdo = QRadioButton(self.tr("unnamed [Uninitialized, id: %1]").arg(client.features.device_id))
          self.rdoBtnGrp.addButton(rdo)
          self.rdoBtnGrp.setId(rdo, id)
          id += 1
@@ -111,6 +197,7 @@ class DlgSetupKeepKey(ArmoryDialog):
       self.rdoBtnGrp.addButton(self.rdoRecover)
       self.rdoBtnGrp.addButton(self.rdoUpload)
       self.rdoBtnGrp.addButton(self.rdoUploadPK)
+      self.rdoNew.setChecked(True)
       self.rdoBtnGrp.setExclusive(True)
 
       layoutRadio.addWidget(self.rdoNew)
@@ -143,6 +230,9 @@ class DlgSetupKeepKey(ArmoryDialog):
 
    def nextDlg(self):
 
+      if self.rdoNew.isChecked():
+         dlg = DlgGenerateNew(self.parent, self.main, self.device)
+
       self.accept()
       dlg.exec_()
 
@@ -162,6 +252,8 @@ class DlgGenerateNew(ArmoryDialog):
       self.edtName = QLineEdit()
       layoutLabel.addWidget(lblName)
       layoutLabel.addWidget(self.edtName)
+      labelFrame = QFrame()
+      labelFrame.setLayout(layoutLabel)
 
       self.rdoBtnGrp = QButtonGroup()
       layoutRadio = QHBoxLayout()
@@ -199,7 +291,7 @@ class DlgGenerateNew(ArmoryDialog):
 
       layout = QVBoxLayout()
       layout.addWidget(lblDescr)
-      layout.addWidget(layoutLabel)
+      layout.addWidget(labelFrame)
       layout.addWidget(radioButtonFrame)
       layout.addWidget(self.chkPin)
       layout.addWidget(self.chkPassphrase)
@@ -231,189 +323,6 @@ class DlgGenerateNew(ArmoryDialog):
                               device_label, 'english')
 
       self.accept()
-
-# Restore a BIP 39 mnemonic from device
-class DlgRestoreMnemonic(ArmoryDialog):
-   def __init__(self, parent, main, device):
-
-      super(DlgRestoreMnemonic, self).__init__(parent, main)
-      self.device = device
-      lblDescr = QRichLabel(self.tr(
-      '<b><u>An uninitialized KeepKey was selected</u></b> '
-      '<br><br>'
-      'Use this window to setup your KeepKey hardware wallet.'))
-
-
-      lblType = QRichLabel(self.tr('<b>Options</b>'), doWrap=False)
-
-      self.rdoBtnGrp = QButtonGroup()
-      layoutRadio = QVBoxLayout()
-      layoutRadio.setSpacing(0)
-
-      self.rdoNew = QRadioButton(self.tr('Let the device generate a new seed'))
-      self.rdoRecover = QRadioButton(self.tr('Recover from a BIP 39 mnemonic that you wrote down'))
-      self.rdoUpload = QRadioButton(self.tr('Upload a BIP 39 mnemonic that you wrote down'))
-      self.rdoUploadPK = QRadioButton(self.tr('Upload a master private key'))
-      self.rdoBtnGrp.addButton(self.rdoNew)
-      self.rdoBtnGrp.addButton(self.rdoRecover)
-      self.rdoBtnGrp.addButton(self.rdoUpload)
-      self.rdoBtnGrp.addButton(self.rdoUploadPK)
-      self.rdoBtnGrp.setExclusive(True)
-
-      layoutRadio.addWidget(self.rdoNew)
-      layoutRadio.addWidget(self.rdoRecover)
-      layoutRadio.addWidget(self.rdoUpload)
-      layoutRadio.addWidget(self.rdoUploadPK)
-
-      radioButtonFrame = QFrame()
-      radioButtonFrame.setLayout(layoutRadio)
-
-      self.btnAccept = QPushButton(self.tr('Next'))
-      self.btnCancel = QPushButton(self.tr("Cancel"))
-      self.connect(self.btnAccept, SIGNAL(CLICKED), self.nextDlg)
-      self.connect(self.btnCancel, SIGNAL(CLICKED), self.reject)
-      buttonBox = QDialogButtonBox()
-      buttonBox.addButton(self.btnAccept, QDialogButtonBox.AcceptRole)
-      buttonBox.addButton(self.btnCancel, QDialogButtonBox.RejectRole)
-
-      layout = QVBoxLayout()
-      layout.addWidget(lblDescr)
-      layout.addWidget(lblType)
-      layout.addWidget(radioButtonFrame)
-      layout.addWidget(buttonBox)
-      self.setLayout(layout)
-
-      self.setWindowTitle(self.tr('Choose How to setup a KeepKey'))
-
-      self.setMinimumWidth(500)
-      self.layout().setSizeConstraint(QLayout.SetFixedSize)
-
-   def nextDlg(self):
-
-      self.accept()
-      dlg.exec_()
-
-# Upload a BIP 39 Mnemonic
-class DlgUploadMnemonic(ArmoryDialog):
-   def __init__(self, parent, main, device):
-
-      super(DlgUploadMnemonic, self).__init__(parent, main)
-      self.device = device
-      lblDescr = QRichLabel(self.tr(
-      '<b><u>An uninitialized KeepKey was selected</u></b> '
-      '<br><br>'
-      'Use this window to setup your KeepKey hardware wallet.'))
-
-
-      lblType = QRichLabel(self.tr('<b>Options</b>'), doWrap=False)
-
-      self.rdoBtnGrp = QButtonGroup()
-      layoutRadio = QVBoxLayout()
-      layoutRadio.setSpacing(0)
-
-      self.rdoNew = QRadioButton(self.tr('Let the device generate a new seed'))
-      self.rdoRecover = QRadioButton(self.tr('Recover from a BIP 39 mnemonic that you wrote down'))
-      self.rdoUpload = QRadioButton(self.tr('Upload a BIP 39 mnemonic that you wrote down'))
-      self.rdoUploadPK = QRadioButton(self.tr('Upload a master private key'))
-      self.rdoBtnGrp.addButton(self.rdoNew)
-      self.rdoBtnGrp.addButton(self.rdoRecover)
-      self.rdoBtnGrp.addButton(self.rdoUpload)
-      self.rdoBtnGrp.addButton(self.rdoUploadPK)
-      self.rdoBtnGrp.setExclusive(True)
-
-      layoutRadio.addWidget(self.rdoNew)
-      layoutRadio.addWidget(self.rdoRecover)
-      layoutRadio.addWidget(self.rdoUpload)
-      layoutRadio.addWidget(self.rdoUploadPK)
-
-      radioButtonFrame = QFrame()
-      radioButtonFrame.setLayout(layoutRadio)
-
-      self.btnAccept = QPushButton(self.tr('Next'))
-      self.btnCancel = QPushButton(self.tr("Cancel"))
-      self.connect(self.btnAccept, SIGNAL(CLICKED), self.nextDlg)
-      self.connect(self.btnCancel, SIGNAL(CLICKED), self.reject)
-      buttonBox = QDialogButtonBox()
-      buttonBox.addButton(self.btnAccept, QDialogButtonBox.AcceptRole)
-      buttonBox.addButton(self.btnCancel, QDialogButtonBox.RejectRole)
-
-      layout = QVBoxLayout()
-      layout.addWidget(lblDescr)
-      layout.addWidget(lblType)
-      layout.addWidget(radioButtonFrame)
-      layout.addWidget(buttonBox)
-      self.setLayout(layout)
-
-      self.setWindowTitle(self.tr('Choose How to setup a KeepKey'))
-
-      self.setMinimumWidth(500)
-      self.layout().setSizeConstraint(QLayout.SetFixedSize)
-
-   def nextDlg(self):
-
-      self.accept()
-      dlg.exec_()
-
-# Upload a master private key
-class DlgUploadMPK(ArmoryDialog):
-   def __init__(self, parent, main, device):
-
-      super(DlgUploadMPK, self).__init__(parent, main)
-      self.device = device
-      lblDescr = QRichLabel(self.tr(
-      '<b><u>An uninitialized KeepKey was selected</u></b> '
-      '<br><br>'
-      'Use this window to setup your KeepKey hardware wallet.'))
-
-
-      lblType = QRichLabel(self.tr('<b>Options</b>'), doWrap=False)
-
-      self.rdoBtnGrp = QButtonGroup()
-      layoutRadio = QVBoxLayout()
-      layoutRadio.setSpacing(0)
-
-      self.rdoNew = QRadioButton(self.tr('Let the device generate a new seed'))
-      self.rdoRecover = QRadioButton(self.tr('Recover from a BIP 39 mnemonic that you wrote down'))
-      self.rdoUpload = QRadioButton(self.tr('Upload a BIP 39 mnemonic that you wrote down'))
-      self.rdoUploadPK = QRadioButton(self.tr('Upload a master private key'))
-      self.rdoBtnGrp.addButton(self.rdoNew)
-      self.rdoBtnGrp.addButton(self.rdoRecover)
-      self.rdoBtnGrp.addButton(self.rdoUpload)
-      self.rdoBtnGrp.addButton(self.rdoUploadPK)
-      self.rdoBtnGrp.setExclusive(True)
-
-      layoutRadio.addWidget(self.rdoNew)
-      layoutRadio.addWidget(self.rdoRecover)
-      layoutRadio.addWidget(self.rdoUpload)
-      layoutRadio.addWidget(self.rdoUploadPK)
-
-      radioButtonFrame = QFrame()
-      radioButtonFrame.setLayout(layoutRadio)
-
-      self.btnAccept = QPushButton(self.tr('Next'))
-      self.btnCancel = QPushButton(self.tr("Cancel"))
-      self.connect(self.btnAccept, SIGNAL(CLICKED), self.nextDlg)
-      self.connect(self.btnCancel, SIGNAL(CLICKED), self.reject)
-      buttonBox = QDialogButtonBox()
-      buttonBox.addButton(self.btnAccept, QDialogButtonBox.AcceptRole)
-      buttonBox.addButton(self.btnCancel, QDialogButtonBox.RejectRole)
-
-      layout = QVBoxLayout()
-      layout.addWidget(lblDescr)
-      layout.addWidget(lblType)
-      layout.addWidget(radioButtonFrame)
-      layout.addWidget(buttonBox)
-      self.setLayout(layout)
-
-      self.setWindowTitle(self.tr('Choose How to setup a KeepKey'))
-
-      self.setMinimumWidth(500)
-      self.layout().setSizeConstraint(QLayout.SetFixedSize)
-
-   def nextDlg(self):
-
-      self.accept()
-      dlg.exec_()
 
 # Need to put circular imports at the end of the script to avoid an import deadlock
 from qtdialogs import CLICKED
