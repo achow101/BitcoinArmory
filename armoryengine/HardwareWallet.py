@@ -49,6 +49,10 @@ TREZOR_ENUM = 1
 LEDGER_ENUM = 2
 KEEPKEY_ENUM = 3
 DIGITAL_BITBOX_ENUM = 4
+
+MASTER_XPUB_KEYPATH = "44'/0'/0'"
+BASE_KEYPATH = "44'/0'/0'/0/"
+
    
 class HardwareWallet(PyBtcWallet):
    """

@@ -9,7 +9,7 @@ from qtdefines import * #@UnusedWildImport
 
 import hid
 
-from armoryengine.HardwareWallet import HardwareWallet, LEDGER_ENUM
+from armoryengine.HardwareWallet import HardwareWallet, LEDGER_ENUM, BASE_KEYPATH, MASTER_XPUB_KEYPATH
 from armoryengine.ArmoryUtils import *
 from armoryengine.PyBtcWallet import buildWltFileName, WLT_UPDATE_ADD, WLT_DATATYPE_KEYDATA
 
@@ -78,13 +78,13 @@ class DlgChooseLedger(ArmoryDialog):
       device = self.devices[idx]
       
       # Get master xpub from ledger
-      result = device.getWalletPublicKey("44'/0'/0'")
+      result = device.getWalletPublicKey(MASTER_XPUB_KEYPATH)
       mpk = SecureBinaryData(str(result['publicKey']))
       chaincode = SecureBinaryData(str(result['chainCode']))
       print mpk.toHexStr()
 
       # Get first address public key
-      result = device.getWalletPublicKey("44'/0'/0'/0/0")
+      result = device.getWalletPublicKey(BASE_KEYPATH + "0")
       firstAddrPub = SecureBinaryData(str(result['publicKey']))
 
       self.newWallet = LedgerWallet(device)
@@ -114,11 +114,9 @@ class LedgerWallet(HardwareWallet):
       """
 
       result = self.device.getWalletPublicKey("44'/0'/0'/0/" + str(self.lastComputedChainIndex + 1))
-      print "44'/0'/0'/0/" + str(self.lastComputedChainIndex + 1)
       newAddrPub = result['publicKey']
 
       newAddrSecPub = SecureBinaryData(str(newAddrPub))
-      print newAddrSecPub.toHexStr()
       newAddr = PyBtcAddress().createFromPublicKeyData(newAddrSecPub)
       newAddr.chaincode = SecureBinaryData(str(result['chainCode']))
       newAddr.chainIndex = self.lastComputedChainIndex + 1
